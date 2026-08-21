@@ -1,0 +1,41 @@
+{
+  "name": "365meo-backend",
+  "version": "1.0.0",
+  "description": "365MEO - Automation Backend",
+  "main": "dist/index.js",
+  "scripts": {
+    "dev": "nodemon --watch src --ext ts --exec tsx src/index.ts",
+    "build": "npx prisma generate && tsc",
+    "start": "npx prisma db push && npx tsx prisma/update_365meo_settings.ts && node dist/index.js",
+    "test:gemini": "tsx src/tests/test-gemini.ts",
+    "test:line": "tsx src/tests/test-line.ts",
+    "test:google": "tsx src/tests/test-google.ts",
+    "test:google-manual": "tsx src/tests/test-google-manual.ts",
+    "test:drive": "tsx src/tests/test-google-drive.ts",
+    "test:gbp": "tsx src/tests/test-google-gbp.ts",
+    "test:review": "tsx src/tests/test-review-handler.ts",
+    "demo:review": "tsx src/tests/demo-review-simulator.ts",
+    "test:optimization": "tsx src/tests/test-post-optimization.ts"
+  },
+  "dependencies": {
+    "@google/generative-ai": "^0.11.3",
+    "@line/bot-sdk": "^7.5.2",
+    "@prisma/client": "^5.22.0",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.5",
+    "express": "^4.19.2",
+    "googleapis": "^140.0.0"
+  },
+  "devDependencies": {
+    "@types/cors": "^2.8.17",
+    "@types/express": "^4.17.21",
+    "@types/node": "^20.14.9",
+    "nodemon": "^3.1.4",
+    "prisma": "^5.22.0",
+    "tsx": "^4.15.7",
+    "typescript": "^5.5.2"
+  },
+  "prisma": {
+    "seed": "tsx prisma/seed.ts"
+  }
+}

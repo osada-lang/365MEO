@@ -1,0 +1,50 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body {
+    -webkit-tap-highlight-color: transparent;
+  }
+}
+
+/* Stripe Aurora Gradient Mesh Animation */
+.stripe-mesh {
+  background-color: #533afd;
+  background-image:
+    radial-gradient(at 10% 20%, #ebe8ff 0px, transparent 50%),
+    radial-gradient(at 90% 10%, #ea2261 0px, transparent 50%),
+    radial-gradient(at 50% 80%, #665efd 0px, transparent 50%),
+    radial-gradient(at 80% 90%, #f96bee 0px, transparent 50%),
+    radial-gradient(at 20% 80%, #f5e9d4 0px, transparent 50%);
+  background-size: 200% 200%;
+  animation: stripe-aurora 20s ease infinite;
+}
+
+@keyframes stripe-aurora {
+  0% {
+    background-position: 0% 50%;
+  }
+  50% {
+    background-position: 100% 50%;
+  }
+  100% {
+    background-position: 0% 50%;
+  }
+}
+
+/* Custom Scrollbars for mobile dashboard */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}

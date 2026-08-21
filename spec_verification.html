@@ -1,0 +1,1162 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>365MEO システム開発仕様確認書 兼 要件定義サマリー</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Google Fonts (Noto Sans JP) -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@300;400;500;700;900&display=swap" rel="stylesheet">
+    <!-- Lucide Icons CDN -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <style>
+        body {
+            font-family: 'Noto Sans JP', sans-serif;
+            background-color: #f8fafc;
+        }
+        /* 印刷用スタイル設定 */
+        @media print {
+            body {
+                background-color: #ffffff !important;
+                color: #0f172a !important;
+                font-size: 11pt;
+                -webkit-print-color-adjust: exact;
+                print-color-adjust: exact;
+            }
+            .no-print {
+                display: none !important;
+            }
+            .page-break {
+                page-break-before: always;
+                break-before: page;
+            }
+            .shadow-lg, .shadow-md, .shadow-sm, .shadow-xl {
+                box-shadow: none !important;
+                border: 1px solid #cbd5e1 !important;
+            }
+            .bg-gradient-to-r, .bg-gradient-to-br {
+                background: #f1f5f9 !important;
+                color: #0f172a !important;
+                border: 1px solid #94a3b8 !important;
+            }
+            .text-white {
+                color: #0f172a !important;
+            }
+            .text-slate-300, .text-slate-400 {
+                color: #475569 !important;
+            }
+            .bg-slate-900, .bg-emerald-950, .bg-blue-950, .bg-rose-950 {
+                background-color: #f8fafc !important;
+                color: #0f172a !important;
+                border: 1px solid #cbd5e1 !important;
+            }
+            .border-rose-200, .border-emerald-200, .border-slate-200 {
+                border-color: #94a3b8 !important;
+            }
+            /* 印刷時にアコーディオン(details)を強制的に全開にする */
+            details {
+                display: block !important;
+                break-inside: avoid;
+            }
+            details > summary {
+                background-color: #f8fafc !important;
+                border-bottom: 1px solid #cbd5e1 !important;
+                pointer-events: none;
+            }
+            details > summary svg,
+            details > summary i,
+            details > summary span.chevron-icon {
+                display: none !important;
+            }
+            details > div, details > p, details > section, details > *:not(summary) {
+                display: block !important;
+                height: auto !important;
+            }
+            /* テーブルの印刷はみ出しとカラム千切れ防止 */
+            .overflow-x-auto {
+                overflow: visible !important;
+            }
+            table {
+                min-width: 100% !important;
+                width: 100% !important;
+                table-layout: fixed !important;
+            }
+            th, td {
+                padding: 6px 4px !important;
+                font-size: 8pt !important;
+                word-break: break-all !important;
+            }
+            th span, td span {
+                font-size: 7pt !important;
+                line-height: 1.2 !important;
+            }
+        }
+        /* 美しいカスタムスクロールバー（Webkitブラウザ用） */
+        .overflow-x-auto::-webkit-scrollbar {
+            height: 6px;
+        }
+        .overflow-x-auto::-webkit-scrollbar-track {
+            background: #f1f5f9;
+            border-radius: 3px;
+        }
+        .overflow-x-auto::-webkit-scrollbar-thumb {
+            background: #cbd5e1;
+            border-radius: 3px;
+        }
+        .overflow-x-auto::-webkit-scrollbar-thumb:hover {
+            background: #94a3b8;
+        }
+        
+        /* details開閉時にアイコンを回転させるためのスタイル */
+        details[open] .chevron-icon {
+            transform: rotate(180deg);
+        }
+        .chevron-icon {
+            transition: transform 0.2s ease-in-out;
+        }
+        /* detailsのデフォルトの矢印を非表示に */
+        summary::-webkit-details-marker {
+            display: none;
+        }
+        summary {
+            display: flex;
+            list-style: none;
+        }
+    </style>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        meo: {
+                            50: '#f0fdf4',
+                            100: '#dcfce7',
+                            600: '#16a34a', /* 365MEOブランドカラー */
+                            700: '#15803d',
+                            800: '#166534',
+                            900: '#14532d',
+                        },
+                        brandBlue: {
+                            50: '#f0f9ff',
+                            100: '#e0f2fe',
+                            200: '#bae6fd',
+                            600: '#0284c7', /* 地図やテック感を出すブルー */
+                            700: '#0369a1',
+                            900: '#0c4a6e',
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+</head>
+<body class="text-slate-800 antialiased leading-relaxed">
+
+    <!-- ナビゲーションバー -->
+    <nav class="sticky top-0 z-50 bg-white/95 backdrop-blur-md border-b border-slate-200/80 shadow-sm no-print">
+        <div class="max-w-5xl mx-auto px-4 sm:px-6">
+            <div class="flex items-center justify-between h-16">
+                <div class="flex items-center gap-2.5">
+                    <span class="bg-gradient-to-r from-emerald-500 to-brandBlue-600 text-white p-2 rounded-xl shadow-md">
+                        <i data-lucide="map-pin" class="w-5 h-5"></i>
+                    </span>
+                    <span class="text-lg font-black tracking-wider bg-gradient-to-r from-slate-900 to-slate-700 bg-clip-text text-transparent">
+                        365MEO
+                    </span>
+                </div>
+                <div class="hidden md:flex items-center gap-6 text-sm font-medium text-slate-600">
+                    <a href="#vision-details" class="hover:text-emerald-600 transition-colors">大義と目的</a>
+                    <a href="#post-details" class="hover:text-emerald-600 transition-colors">投稿仕様</a>
+                    <a href="#reply-details" class="hover:text-emerald-600 transition-colors">返信・LINE仕様</a>
+                    <a href="#failsafe-details" class="hover:text-emerald-600 transition-colors">フェイルセーフ</a>
+                    <a href="#hallucination-details" class="hover:text-emerald-600 transition-colors">ハルシネーション対策</a>
+                    <a href="#diagnosis-details" class="hover:text-emerald-600 transition-colors font-bold text-brandBlue-600">モンキー診断(提案)</a>
+                    <a href="#report-details" class="hover:text-emerald-600 transition-colors font-bold text-amber-600">定期レポート(提案)</a>
+                    <a href="#feedback" class="hover:text-emerald-600 transition-colors font-bold text-slate-600">フィードバック</a>
+                </div>
+                <button onclick="window.print()" class="bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold px-4 py-2 rounded-lg transition-all flex items-center gap-1.5 shadow-sm">
+                    <i data-lucide="printer" class="w-3.5 h-3.5"></i>
+                    PDF出力・印刷
+                </button>
+            </div>
+        </div>
+    </nav>
+
+    <!-- メインコンテンツ -->
+    <main class="max-w-5xl mx-auto px-4 sm:px-6 py-8 md:py-12 space-y-12">
+
+        <!-- ヒーローヘッダーセクション -->
+        <header class="text-center space-y-4 max-w-3xl mx-auto">
+            <div class="inline-flex items-center gap-2 bg-emerald-50 text-emerald-800 px-3.5 py-1.5 rounded-full text-xs font-semibold border border-emerald-200/50 shadow-sm">
+                <span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+                確認版：システム開発仕様定義
+            </div>
+            <h1 class="text-3xl md:text-4xl font-extrabold text-slate-900 tracking-tight leading-normal">
+                365MEO 開発仕様確認書
+            </h1>
+            <p class="text-slate-500 text-sm md:text-base">
+                都田代表のMEOノウハウを長田氏の技術力で完全自動化し、祖父江社長の信用力をもって展開する本物のMEOツール『365MEO』の基本仕様合意書です。
+            </p>
+            <div class="pt-2 text-xs text-slate-400 flex flex-wrap items-center justify-center gap-4 border-t border-slate-200/60 max-w-md mx-auto">
+                <span><strong>作成日:</strong> 2026年7月7日</span>
+                <span class="hidden sm:inline text-slate-300">|</span>
+                <span><strong>対象:</strong> 株式会社３６５ ✕ 合同会社THANX CREATE ✕ 株式会社ジラーチ</span>
+            </div>
+        </header>
+
+        <!-- 仕様・認識確認チェックリスト（メイン画面） -->
+        <section id="checklist" class="space-y-6">
+            <div class="flex items-center gap-3 border-b border-slate-200 pb-3">
+                <span class="bg-emerald-100 text-emerald-700 p-1.5 rounded-md"><i data-lucide="check-square" class="w-5 h-5"></i></span>
+                <h2 class="text-2xl font-bold text-slate-900">仕様・認識確認チェックリスト</h2>
+            </div>
+            
+            <p class="text-slate-600 text-sm">
+                顔合わせで合意された基本仕様やプロジェクトの大義について、現時点での認識に相違がないかの確認用シートです。各項目をクリックして詳細仕様を確認し、チェックを行ってください。
+            </p>
+
+            <div class="bg-white rounded-2xl border border-slate-200 p-6 md:p-8 shadow-md space-y-6">
+                <!-- 認識確認ステータス表示 -->
+                <div class="bg-slate-50 border border-slate-200 rounded-xl p-4 flex flex-col sm:flex-row items-center justify-between gap-4">
+                    <div class="space-y-1 text-center sm:text-left">
+                        <span class="text-xs text-slate-400 font-bold block uppercase tracking-wider">PROJECT APPROVAL STATUS</span>
+                        <div class="text-lg font-black text-slate-900">仕様認識の確認ステータス</div>
+                    </div>
+                    <div class="flex items-center gap-3 w-full sm:w-auto">
+                        <div class="w-full sm:w-48 bg-slate-200 rounded-full h-3 overflow-hidden shadow-inner">
+                            <div id="progress-bar" class="bg-emerald-500 h-3 rounded-full transition-all duration-500" style="width: 0%;"></div>
+                        </div>
+                        <span id="progress-text" class="text-base font-black text-slate-700 shrink-0">0 / 5</span>
+                    </div>
+                </div>
+
+                <!-- チェック項目 -->
+                <div class="space-y-6">
+                    <!-- 項目1 (オレンジ) -->
+                    <div class="border border-amber-200 bg-amber-50/20 rounded-xl p-5 space-y-4 hover:border-amber-300 transition-colors">
+                        <label class="flex items-start gap-4 cursor-pointer">
+                            <input type="checkbox" onchange="updateProgress()" class="spec-checkbox w-5.5 h-5.5 mt-0.5 rounded text-emerald-600 focus:ring-emerald-500 border-slate-300">
+                            <div class="space-y-1">
+                                <span class="font-bold text-sm text-slate-900 block">1. 365MEOプロジェクトの「社会的使命と最終ゴール」への認識一致</span>
+                                <span class="text-xs text-slate-500 leading-relaxed block">
+                                    順位維持ではなく「20位以内ピン露出 ✕ 複数キーワード量産」による実集客の最大化と、月額19,800円（税込・予定）の圧倒的価格で悪徳MEO業者を駆逐する大義への同意。
+                                </span>
+                            </div>
+                        </label>
+                        
+                        <details id="vision-details" class="border-t border-amber-200/60 pt-4 mt-2">
+                            <summary class="flex items-center justify-between text-xs text-emerald-700 font-extrabold cursor-pointer select-none bg-emerald-50 hover:bg-emerald-100/80 border border-emerald-200 rounded-xl py-3.5 px-4 transition-all duration-200 active:scale-[0.99] outline-none shadow-sm hover:shadow">
+                                <span class="flex items-center gap-1.5">
+                                    <i data-lucide="target" class="w-4 h-4"></i>
+                                    詳細な仕様・大義を見る
+                                </span>
+                                <i data-lucide="chevron-down" class="w-4 h-4 chevron-icon"></i>
+                            </summary>
+                            <div class="mt-4 p-5 md:p-6 bg-white/90 rounded-xl border border-amber-100 shadow-sm space-y-4">
+                                <div class="bg-slate-900 text-white rounded-2xl p-6 shadow-lg relative overflow-hidden space-y-6">
+                                    
+                                    <!-- ① 背景 -->
+                                    <div class="space-y-2 text-left flex flex-col md:flex-row gap-6 items-center">
+                                        <div class="space-y-2 flex-1">
+                                            <span class="text-xs font-black tracking-widest text-amber-400 uppercase">① BACKGROUND (背景)</span>
+                                            <h3 class="text-base font-bold text-white">
+                                                悪徳MEO業者の蔓延と、店舗業界のコスト（単価）の壁
+                                            </h3>
+                                            <p class="text-xs text-slate-300 leading-relaxed">
+                                                不毛な順位争いを煽ったり、効果が出ない形骸化した対策をするMEO業者が蔓延しています。広報費に大金を割ける大手企業とは異なり、MEOの需要が最も高いのは地域の「個店（店舗）」です。そのため、効果の出る本当に質の高いMEO対策は単価（コスト）が合わず、これまでなかなか普及しにくい現状がありました。
+                                            </p>
+                                        </div>
+                                        <div class="w-full md:w-56 shrink-0">
+                                            <img src="./materials/bg_owner_sad.jpg" alt="背景イメージ：困惑する店主" class="w-full h-36 object-cover rounded-xl shadow-md border border-slate-700/50">
+                                        </div>
+                                    </div>
+
+                                    <!-- ② 目的 -->
+                                    <div class="space-y-2 pt-4 border-t border-slate-800 text-left flex flex-col md:flex-row-reverse gap-6 items-center">
+                                        <div class="space-y-2 flex-1">
+                                            <span class="text-xs font-black tracking-widest text-emerald-400 uppercase">② OBJECTIVE (目的)</span>
+                                            <h3 class="text-base font-bold text-white">
+                                                AI自動化による低単価化で、悪徳業者を駆逐しMEO業界を変革する
+                                            </h3>
+                                            <p class="text-xs text-slate-300 leading-relaxed">
+                                                AIとテクノロジーを駆使した徹底的なシステム自動化により、人件費等の開発・運営コストを削減。本当に集客効果を発揮する本物のMEOツールを圧倒的低価格（月額19,800円（税込・予定））で広く普及させます。成果の出ない悪徳業者を駆逐し、本物の価値を提供してMEO業界の常識を根底から変革します。
+                                            </p>
+                                        </div>
+                                        <div class="w-full md:w-56 shrink-0">
+                                            <img src="./materials/obj_happy_ai.jpg" alt="目的イメージ：AIとのハイタッチ" class="w-full h-36 object-cover rounded-xl shadow-md border border-slate-700/50">
+                                        </div>
+                                    </div>
+
+                                    <!-- ③ 手法 -->
+                                    <div class="space-y-3 pt-4 border-t border-slate-800 text-left">
+                                        <div class="flex flex-col md:flex-row gap-6 items-center">
+                                            <div class="space-y-2 flex-1">
+                                                <span class="text-xs font-black tracking-widest text-brandBlue-400 uppercase">③ METHODOLOGY (手法)</span>
+                                                <h3 class="text-base font-bold text-white">
+                                                    不毛な順位争いから、広域ピン露出（集客重視）への転換
+                                                </h3>
+                                                <p class="text-xs text-slate-300 leading-relaxed">
+                                                    順位維持だけを狙う従来のやり方に対し、ユーザーの現在地に近いピン表示を狙い、毎日自動投稿でマップ上の露出面積を広げる本物のMEO手法です。
+                                                </p>
+                                            </div>
+                                            <div class="w-full md:w-56 shrink-0">
+                                                <img src="./materials/method_map_pins.jpg" alt="手法イメージ：広域マップピン" class="w-full h-36 object-cover rounded-xl shadow-md border border-slate-700/50">
+                                            </div>
+                                        </div>
+                                        
+                                        <!-- 対比グリッド -->
+                                        <div class="grid sm:grid-cols-2 gap-4 text-left mt-3">
+                                            <div class="bg-rose-950/40 border border-rose-900/40 p-4 rounded-lg space-y-2">
+                                                <span class="flex items-center gap-1 text-rose-400 text-xs font-bold">
+                                                    <i data-lucide="x-circle" class="w-4 h-4"></i>
+                                                    従来のMEO業者（不毛な順位争い）
+                                                </span>
+                                                <p class="text-[11px] text-slate-300 leading-relaxed">
+                                                    特定の1〜3キーワードのみでの最上位（1〜3位）表示に固執。それ以外のキーワードや、ユーザーの検索現在地が少し外れただけでマップに表示されず、実際の来店（集客）に結びつかないにもかかわらず、月額3万円等の高額費用を請求し続ける。
+                                                </p>
+                                            </div>
+                                            <div class="bg-emerald-950/40 border border-emerald-900/40 p-4 rounded-lg space-y-2">
+                                                <span class="flex items-center gap-1 text-emerald-400 text-xs font-bold">
+                                                    <i data-lucide="check-circle2" class="w-4 h-4"></i>
+                                                    365MEOの手法（広域ピン露出）
+                                                </span>
+                                                <p class="text-[11px] text-slate-300 leading-relaxed">
+                                                    Googleマップの表示条件である「20位以内」へのピン露出を幅広く狙う。ユーザーの来店動線（現在地近くのピン表示）を最も重視し、多数 of ロングテールキーワードを毎日自動投稿することで、地図上の露出面積を最大化し確実な集客へ繋げる。
+                                                </p>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <!-- 認識合わせしたいこと（協議事項） -->
+                                    <div class="space-y-2 pt-4 border-t border-dashed border-slate-700 text-left">
+                                        <span class="text-xs font-black tracking-widest text-amber-400 uppercase flex items-center gap-1.5">
+                                            <i data-lucide="help-circle" class="w-3.5 h-3.5"></i>
+                                            認識合わせしたいこと（協議事項）
+                                        </span>
+                                        <p class="text-xs text-slate-200 leading-relaxed font-semibold">
+                                            Q. 悪徳業者を駆逐した後の「市場独占」は最終目的に含まれますか？
+                                        </p>
+                                        <p class="text-[11px] text-slate-400 leading-relaxed">
+                                            ※ もしYES（市場独占を目指す）である場合、競合他社によるロジックや技術の模倣を防ぐため、特許等の知的財産権の取得も視野に入れて検討する必要があるかもしれません。
+                                        </p>
+                                    </div>
+
+                                </div>
+                                <!-- 閉じるボタン -->
+                                <div class="mt-6 pt-4 border-t border-amber-100 flex justify-end no-print">
+                                    <button type="button" onclick="closeDetails(event, 'vision-details')" class="bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold px-4.5 py-2.5 rounded-xl transition-all flex items-center gap-1.5 shadow-md hover:shadow-lg active:scale-95">
+                                        <i data-lucide="chevron-up" class="w-4 h-4"></i>
+                                        この詳細仕様を閉じる
+                                    </button>
+                                </div>
+                            </div>
+                        </details>
+                    </div>
+
+                    <!-- 項目2 (ライトブルー) -->
+                    <div class="border border-brandBlue-200 bg-brandBlue-50/20 rounded-xl p-5 space-y-4 hover:border-brandBlue-300 transition-colors">
+                        <label class="flex items-start gap-4 cursor-pointer">
+                            <input type="checkbox" onchange="updateProgress()" class="spec-checkbox w-5.5 h-5.5 mt-0.5 rounded text-emerald-600 focus:ring-emerald-500 border-slate-300">
+                            <div class="space-y-1">
+                                <span class="font-bold text-sm text-slate-900 block">2. 自動投稿機能の詳細および「画像使い回し・フォールバック」仕様の認識一致</span>
+                                <span class="text-xs text-slate-500 leading-relaxed block">
+                                    登録したキーワード（メイン5語・サブ最大15語）を反映した毎日の自動投稿、オリジナル写真がない場合でも初期登録画像からランダム選択する「ストック画像フォールバック」仕様への同意。
+                                </span>
+                            </div>
+                        </label>
+                        
+                        <details id="post-details" class="border-t border-brandBlue-200/60 pt-4 mt-2">
+                            <summary class="flex items-center justify-between text-xs text-brandBlue-700 font-extrabold cursor-pointer select-none bg-brandBlue-50 hover:bg-brandBlue-100/80 border border-brandBlue-200 rounded-xl py-3.5 px-4 transition-all duration-200 active:scale-[0.99] outline-none shadow-sm hover:shadow">
+                                <span class="flex items-center gap-1.5">
+                                    <i data-lucide="image" class="w-4 h-4"></i>
+                                    詳細な仕様・自動投稿ルールを見る
+                                </span>
+                                <i data-lucide="chevron-down" class="w-4 h-4 chevron-icon"></i>
+                            </summary>
+                            <div class="mt-4 p-5 md:p-6 bg-white/90 rounded-xl border border-brandBlue-100 shadow-sm space-y-6">
+                                <div class="space-y-6 text-left text-xs">
+                                    <!-- 設定項目 -->
+                                    <div class="bg-slate-50 border border-slate-200 rounded-xl p-4 space-y-2">
+                                        <h3 class="font-bold text-slate-900 border-b border-slate-100 pb-1.5 flex items-center gap-1.5">
+                                            <i data-lucide="settings" class="w-4 h-4 text-brandBlue-600"></i>
+                                            管理画面での設定・登録項目
+                                        </h3>
+                                        <ul class="list-disc pl-5 space-y-1 text-slate-600">
+                                            <li><strong>文章作成のための素材入力:</strong> ホームページ、ポータルサイト、SNS情報などを素材として入力。</li>
+                                            <li><strong>対策キーワード登録:</strong> メインキーワードを5単語、サブキーワードを15単語まで設定可能。（メインは毎回本文に含め、サブはランダムで使い回す）</li>
+                                            <li><strong>固定フッターの入力:</strong> 店舗名、住所、アクセス情報などの固定署名を入力。（フッターとして自動付与）</li>
+                                            <li><strong>ボタン設定:</strong> ボタン文言は「詳細」固定。遷移先URLは管理画面から指定可能。</li>
+                                        </ul>
+                                    </div>
+
+                                    <!-- 動作仕様 -->
+                                    <div class="bg-slate-50 border border-slate-200 rounded-xl p-4 space-y-2">
+                                        <h3 class="font-bold text-slate-900 border-b border-slate-100 pb-1.5 flex items-center gap-1.5">
+                                            <i data-lucide="play" class="w-4 h-4 text-brandBlue-600"></i>
+                                            システム動作仕様
+                                        </h3>
+                                        <ul class="list-disc pl-5 space-y-1 text-slate-600">
+                                            <li><strong>投稿頻度:</strong> 毎日投稿を実施。</li>
+                                            <li><strong>キーワード使い回し:</strong> 毎回違う文章を作成。キーワードは設定した内容を全て使わなくてよいが、満遍なく使い回す。</li>
+                                        </ul>
+                                    </div>
+
+                                    <!-- 文章ルール -->
+                                    <div class="bg-slate-50 border border-slate-200 rounded-xl p-4 space-y-2">
+                                        <h3 class="font-bold text-slate-900 border-b border-slate-100 pb-1.5 flex items-center gap-1.5">
+                                            <i data-lucide="file-text" class="w-4 h-4 text-brandBlue-600"></i>
+                                            投稿文作成（AI生成）のルール
+                                        </h3>
+                                        <ol class="list-decimal pl-5 space-y-1.5 text-slate-600">
+                                            <li>与えられたメインキーワードは、毎回すべて自然に本文へ含める。</li>
+                                            <li>サブキーワードのプールから2〜3語を選び、毎回違う組み合わせにする（満遍なくローテーションし、直近使った語は避ける）。</li>
+                                            <li>「誰が・どこで・何を提供しているか」を示す宣言的な事実文を毎回異なる言い回しで必ず1文入れる（AIが引用しやすい形）。</li>
+                                            <li>直近の投稿と、内容・書き出し・構成が重複しないよう、毎回違う切り口で書く。</li>
+                                            <li>本文は150〜250字程度。自然な日本語にし、キーワードの羅列にしない。</li>
+                                            <li>本文にURL・電話番号・ボタン文言・住所・会社名の署名は入れない（フッターで自動付与されるため）。</li>
+                                            <li>絵文字・マークダウン・見出し・箇条書き記号は使わず、投稿本文のみを出力する。</li>
+                                            <li>今日の日付を踏まえ、季節・時期に合う話題が自然なら盛り込む（無理に入れない）。</li>
+                                        </ol>
+                                    </div>
+
+                                    <!-- 画像連携方法とストック画像フォールバック設計 -->
+                                    <div class="bg-slate-50 border border-slate-200 rounded-xl p-4 space-y-2">
+                                        <h3 class="font-bold text-slate-900 flex items-center gap-1 border-b border-slate-100 pb-2">
+                                            <i data-lucide="folder-open" class="w-3.5 h-3.5 text-brandBlue-600"></i>
+                                            Google Drive画像連携 ✕ ストック画像フォールバック設計
+                                        </h3>
+                                        <div class="space-y-2 text-[11px] leading-relaxed text-slate-600">
+                                            <p class="text-rose-700 font-semibold">
+                                                <strong>※ AI画像生成は完全不採用（ToS違反によるアカウントBANリスク回避のため）</strong>
+                                            </p>
+                                            <p>
+                                                <strong>① 専用Google Drive連携【合意済】:</strong> 店舗ごとに専用のGoogle Driveフォルダを用意します。店舗オーナーがDriveへ写真をアップロードするだけで、システムが自動的に画像ファイルを取り込み、日々の自動投稿へ適用します（管理画面への手動アップロード不要）。
+                                            </p>
+                                            <p>
+                                                <strong>② 画像枚数に応じた投稿挙動の自動最適化【合意済】:</strong><br>
+                                                MEO効果を最大化するため、店舗オーナー様がGoogle Driveにアップロードしている画像の枚数に応じて、システムが以下の通り投稿方式を自動で切り替えます。<br>
+                                                ・<strong>【ストック0枚の場合】</strong>：画像なし（テキストのみ）で毎日投稿を継続します（MEO上問題ないことを検証済）。<br>
+                                                ・<strong>【ストック1〜9枚の場合】</strong>：同じ画像の連投による効果低下を防ぐため、「画像あり投稿（Drive内の画像を順次ローテーション）」と「画像なし（テキストのみ）投稿」を<strong>毎日交互に投稿</strong>します。<br>
+                                                ・<strong>【ストック10枚以上の場合】</strong>：画像なしの投稿を完全に排除し、毎日異なる画像を使った「画像あり投稿」を連続で実施します。
+                                            </p>
+                                        </div>
+                                    </div>
+
+                                    <!-- 認識合わせしたいこと（協議事項） -->
+                                    <div class="space-y-2 pt-4 border-t border-dashed border-slate-300 text-left">
+                                        <span class="text-xs font-black tracking-widest text-brandBlue-600 uppercase flex items-center gap-1.5 font-bold">
+                                            <i data-lucide="help-circle" class="w-3.5 h-3.5"></i>
+                                            認識合わせしたこと（合意事項）
+                                        </span>
+                                        <p class="text-xs text-slate-800 leading-relaxed font-semibold">
+                                            【合意済】最新画像のアップロード回収・運用ルールについて
+                                        </p>
+                                        <div class="text-[11px] text-slate-600 leading-relaxed pl-4 space-y-1.5 mt-1">
+                                            <p>・店舗オーナーが専用Google Driveへ定期的に画像をアップロードするよう、365MEOの営業担当より適宜依頼・リマインドを行います。</p>
+                                            <p>・「冷やし中華始めました/終わりました」などの季節限定メニュー終了時に伴う、不要になった画像のDrive内削除についても、営業担当から店舗側へ依頼して対応します。</p>
+                                        </div>
+                                    </div>
+
+                                </div>
+                                <!-- 閉じるボタン -->
+                                <div class="mt-6 pt-4 border-t border-brandBlue-100 flex justify-end no-print">
+                                    <button type="button" onclick="closeDetails(event, 'post-details')" class="bg-brandBlue-600 hover:bg-brandBlue-700 text-white text-xs font-bold px-4.5 py-2.5 rounded-xl transition-all flex items-center gap-1.5 shadow-md hover:shadow-lg active:scale-95">
+                                        <i data-lucide="chevron-up" class="w-4 h-4"></i>
+                                        この詳細仕様を閉じる
+                                    </button>
+                                </div>
+                            </div>
+                        </details>
+                    </div>
+
+                    <!-- 項目3 (オレンジ) -->
+                    <div class="border border-amber-200 bg-amber-50/20 rounded-xl p-5 space-y-4 hover:border-amber-300 transition-colors">
+                        <label class="flex items-start gap-4 cursor-pointer">
+                            <input type="checkbox" onchange="updateProgress()" class="spec-checkbox w-5.5 h-5.5 mt-0.5 rounded text-emerald-600 focus:ring-emerald-500 border-slate-300">
+                            <div class="space-y-1">
+                                <span class="font-bold text-sm text-slate-900 block">3. 口コミ自動返信分岐および星1緊急対応LINE通知仕様への認識一致</span>
+                                <span class="text-xs text-slate-500 leading-relaxed block">
+                                    評価別の返信ON/OFF設定、5パターンのランダム返信、星1検知時の担当者LINE通知、および本文あり・なし（高・中・低評価）ごとの詳細なテキスト生成ルールへの同意。
+                                </span>
+                            </div>
+                        </label>
+                        
+                        <details id="reply-details" class="border-t border-amber-200/60 pt-4 mt-2">
+                            <summary class="flex items-center justify-between text-xs text-emerald-700 font-extrabold cursor-pointer select-none bg-emerald-50 hover:bg-emerald-100/80 border border-emerald-200 rounded-xl py-3.5 px-4 transition-all duration-200 active:scale-[0.99] outline-none shadow-sm hover:shadow">
+                                <span class="flex items-center gap-1.5">
+                                    <i data-lucide="message-square" class="w-4 h-4"></i>
+                                    詳細な仕様・自動返信ルールを見る
+                                </span>
+                                <i data-lucide="chevron-down" class="w-4 h-4 chevron-icon"></i>
+                            </summary>
+                            <div class="mt-4 p-5 md:p-6 bg-white/90 rounded-xl border border-amber-100 shadow-sm space-y-6">
+                                <div class="space-y-6 text-left text-xs">
+                                    <!-- 設定・動作仕様 -->
+                                    <div class="bg-slate-50 border border-slate-200 rounded-xl p-4 space-y-2">
+                                        <h3 class="font-bold text-slate-900 border-b border-slate-100 pb-1.5 flex items-center gap-1.5">
+                                            <i data-lucide="settings" class="w-4 h-4 text-emerald-600"></i>
+                                            管理画面での設定・動作仕様
+                                        </h3>
+                                        <ul class="list-disc pl-5 space-y-1 text-slate-600">
+                                            <li><strong>専用管理画面:</strong> クライアントごとの専用管理画面で各種設定が可能。</li>
+                                            <li><strong>自動返信のON/OFF【合意済】:</strong> 導入後、店舗側が管理画面から都度いつでもON/OFFを自由に切り替えられる仕様とします。</li>
+                                            <li><strong>自動返信対象の限定【合意済】:</strong> 自動返信は **星3〜5のみ** 行い、返信は初動（1回）のみとします。</li>
+                                            <li><strong>低評価（☆1・☆2）対応【合意済】:</strong> 自動返信は行わず、**下書き作成まで** をシステムが自動で行います。</li>
+                                            <li><strong>☆1緊急通知:</strong> 星1の口コミ投稿時にシステムからLINE通知を送る仕様とします（通知不具合発生時のみ、ジラーチへエラー通知が送信されます）。</li>
+                                        </ul>
+                                    </div>
+
+                                    <!-- 口コミ返信ルール -->
+                                    <div class="bg-slate-50 border border-slate-200 rounded-xl p-4 space-y-2">
+                                        <h3 class="font-bold text-slate-900 border-b border-slate-100 pb-1.5 flex items-center gap-1.5">
+                                            <i data-lucide="file-text" class="w-4 h-4 text-emerald-600"></i>
+                                            返信文作成に関する基本ルール
+                                        </h3>
+                                        <ol class="list-decimal pl-5 space-y-1 text-slate-600">
+                                            <li>感嘆符（!）は一切使わない。</li>
+                                            <li>定型の丸写しにせず、毎回少し言い回しを変える。</li>
+                                            <li>絵文字・マークダウンは使わず、返信文のテキストのみを出力する。</li>
+                                        </ol>
+                                    </div>
+
+                                    <!-- 分岐ルール -->
+                                    <div class="bg-slate-50 border border-slate-200 rounded-xl p-4 space-y-3">
+                                        <h3 class="font-bold text-slate-900 border-b border-slate-100 pb-1.5 flex items-center gap-1.5">
+                                            <i data-lucide="message-square" class="w-4 h-4 text-emerald-600"></i>
+                                            返信文生成（コメント本文あり・なし）ルール
+                                        </h3>
+                                        
+                                        <div class="space-y-2">
+                                            <p class="font-bold text-slate-800">【コメント本文がある場合】</p>
+                                            <ul class="list-disc pl-5 space-y-1 text-slate-600">
+                                                <li>その内容に自然に応答する。相手が書いた言葉を受けるのはよいが、相手が触れていないキーワードは無理に入れない。</li>
+                                                <li><strong>高評価:</strong> 感謝と、相手が挙げた点への具体的な言及。</li>
+                                                <li><strong>★3 (中評価):</strong> 感謝＋指摘への真摯な受け止め＋改善の意思。</li>
+                                            </ul>
+
+                                            <p class="font-bold text-slate-800 mt-2">【コメントなし（評価のみ）で ★3〜★5 の場合】</p>
+                                            <ul class="list-disc pl-5 text-slate-600">
+                                                <li>「誰が・どこで・何を提供しているか」を示す宣言的な事実文を、毎回違う言い回しで自然に1文入れてよい（AI検索向けシグナル）。簡簡に保ち、宣伝の羅列にしない。</li>
+                                            </ul>
+
+                                            <p class="font-bold text-slate-800 mt-2">【コメントなし（評価のみ）で ★1・★2（低評価）の場合】</p>
+                                            <ul class="list-disc pl-5 text-slate-600 space-y-1">
+                                                <li>謝罪と真摯な受け止めで完結させる（連絡先案内・来店誘導・サービスや地名の宣伝は入れない）。</li>
+                                                <li class="text-rose-700 font-bold">下書きとして生成し、自動送信はしない（人が確認して送信）。</li>
+                                            </ul>
+                                        </div>
+                                    </div>
+
+                                    <!-- 口コミ返信履歴ログ機能 -->
+                                    <div class="bg-slate-50 border border-slate-200 rounded-xl p-4 space-y-1">
+                                        <span class="text-xs font-bold text-slate-700 block flex items-center gap-1">
+                                            <i data-lucide="database" class="w-3.5 h-3.5 text-slate-500"></i>
+                                            返信履歴ログと手動送信機能
+                                        </span>
+                                        <p class="text-[11px] text-slate-600 leading-relaxed">
+                                            システムに自動返信履歴をログ蓄積。ダッシュボード上でAI生成文の手動編集・再送信や、保留中の星1口コミに対する直接の手動返信・送信を完備します。
+                                        </p>
+                                    </div>
+
+                                    <!-- 認識合わせしたいこと（協議事項） -->
+                                    <div class="space-y-2 pt-4 border-t border-dashed border-slate-300 text-left">
+                                        <span class="text-xs font-black tracking-widest text-emerald-600 uppercase flex items-center gap-1.5 font-bold">
+                                            <i data-lucide="help-circle" class="w-3.5 h-3.5"></i>
+                                            認識合わせしたこと（合意事項）
+                                        </span>
+                                        <p class="text-xs text-slate-800 leading-relaxed font-semibold">
+                                            【合意済】返信の自動ON/OFF切り替え運用について
+                                        </p>
+                                        <p class="text-[11px] text-slate-600 leading-relaxed pl-4">
+                                            ・店舗オーナーが管理画面から、いつでも自動返信のON/OFFを任意に切り替えられる仕様（案1）を採用し実装します。
+                                        </p>
+                                    </div>
+
+                                </div>
+                                <!-- 閉じるボタン -->
+                                <div class="mt-6 pt-4 border-t border-amber-100 flex justify-end no-print">
+                                    <button type="button" onclick="closeDetails(event, 'reply-details')" class="bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold px-4.5 py-2.5 rounded-xl transition-all flex items-center gap-1.5 shadow-md hover:shadow-lg active:scale-95">
+                                        <i data-lucide="chevron-up" class="w-4 h-4"></i>
+                                        この詳細仕様を閉じる
+                                    </button>
+                                </div>
+                            </div>
+                        </details>
+                    </div>
+
+                    <!-- 項目4 (ライトブルー) -->
+                    <div class="border border-brandBlue-200 bg-brandBlue-50/20 rounded-xl p-5 space-y-4 hover:border-brandBlue-300 transition-colors">
+                        <label class="flex items-start gap-4 cursor-pointer">
+                            <input type="checkbox" onchange="updateProgress()" class="spec-checkbox w-5.5 h-5.5 mt-0.5 rounded text-emerald-600 focus:ring-emerald-500 border-slate-300">
+                            <div class="space-y-1">
+                                <span class="font-bold text-sm text-slate-900 block">4. LINE不達時における多重バックアップ（フェイルセーフ設計）への認識一致</span>
+                                <span class="text-xs text-slate-500 leading-relaxed block">
+                                    LINE API障害や連携解除による通知不達を防ぐため、緊急メール通知の並行送信と、12時間未返信の星1を本部ダッシュボードに警告表示して能動的コールサポートを行う多重フェイルセーフ仕様への同意。
+                                </span>
+                            </div>
+                        </label>
+                        
+                        <details id="failsafe-details" class="border-t border-brandBlue-200/60 pt-4 mt-2">
+                            <summary class="flex items-center justify-between text-xs text-brandBlue-700 font-extrabold cursor-pointer select-none bg-brandBlue-50 hover:bg-brandBlue-100/80 border border-brandBlue-200 rounded-xl py-3.5 px-4 transition-all duration-200 active:scale-[0.99] outline-none shadow-sm hover:shadow">
+                                <span class="flex items-center gap-1.5">
+                                    <i data-lucide="shield-alert" class="w-4 h-4"></i>
+                                    詳細な仕様・多重フェイルセーフを見る
+                                </span>
+                                <i data-lucide="chevron-down" class="w-4 h-4 chevron-icon"></i>
+                            </summary>
+                            <div class="mt-4 p-5 md:p-6 bg-white/90 rounded-xl border border-brandBlue-100 shadow-sm space-y-6">
+                                <div class="space-y-6 text-left text-xs">
+                                    <p class="text-slate-600 text-xs">
+                                        LINE APIの障害や店舗側の連携解除による星1口コミの放置リスクを技術的に完全回避する設計です。
+                                    </p>
+
+                                    <div class="grid sm:grid-cols-2 gap-4 text-xs leading-relaxed text-slate-600">
+                                        <div class="bg-slate-50 border border-slate-200 p-4 rounded-lg space-y-1">
+                                            <span class="font-bold text-[11px] text-slate-900 flex items-center gap-1"><i data-lucide="mail" class="w-3.5 h-3.5 text-brandBlue-600"></i> 運営事務局への緊急メール並行送信</span>
+                                            <p class="text-[11px] text-slate-500 leading-relaxed">
+                                                星1検知時、LINE通知と同時に365MEO運営事務局（管理用メールアドレス）宛てに緊急メールを自動送信。運営側でいち早く不達や放置の予兆を検知・フォローできます。
+                                            </p>
+                                        </div>
+                                        <div class="bg-slate-50 border border-slate-200 p-4 rounded-lg space-y-1">
+                                            <span class="font-bold text-[11px] text-slate-900 flex items-center gap-1"><i data-lucide="alert-octagon" class="w-3.5 h-3.5 text-rose-600"></i> 本部警告表示と営業への自動アラート</span>
+                                            <p class="text-[11px] text-slate-500 leading-relaxed">
+                                                星1検知から12時間経過しても未処理の場合、本部ダッシュボードに警告を表示すると同時に、365MEOの営業担当者へシステムから自動アラート（メール等）を直接送信します。
+                                            </p>
+                                        </div>
+                                    </div>
+
+                                    <!-- 認識合わせしたいこと（協議事項） -->
+                                    <div class="space-y-2 pt-4 border-t border-dashed border-slate-300 text-left">
+                                        <span class="text-xs font-black tracking-widest text-brandBlue-600 uppercase flex items-center gap-1.5 font-bold">
+                                            <i data-lucide="help-circle" class="w-3.5 h-3.5"></i>
+                                            認識合わせしたいこと（協議事項）
+                                        </span>
+                                        <p class="text-xs text-slate-800 leading-relaxed font-semibold">
+                                            Q. 警告が届く本部ダッシュボード（12時間放置警告）を監視・確認し、オーナーへ能動連絡する実務は「365MEOの営業担当者」とする方向で良いでしょうか？
+                                        </p>
+                                        <p class="text-[11px] text-slate-600 leading-relaxed">
+                                            ※ 12時間放置を検知した時点でシステムから営業担当者へ直接自動アラートが送信され、それを基に営業担当者がオーナーをフォローする運用を想定しています（ジラーチ社での常時監視・代行連絡は含まれません）。
+                                        </p>
+                                    </div>
+
+                                </div>
+                                <!-- 閉じるボタン -->
+                                <div class="mt-6 pt-4 border-t border-brandBlue-100 flex justify-end no-print">
+                                    <button type="button" onclick="closeDetails(event, 'failsafe-details')" class="bg-brandBlue-600 hover:bg-brandBlue-700 text-white text-xs font-bold px-4.5 py-2.5 rounded-xl transition-all flex items-center gap-1.5 shadow-md hover:shadow-lg active:scale-95">
+                                        <i data-lucide="chevron-up" class="w-4 h-4"></i>
+                                        この詳細仕様を閉じる
+                                    </button>
+                                </div>
+                            </div>
+                        </details>
+                    </div>
+
+                    <!-- 項目5 (オレンジ) -->
+                    <div class="border border-amber-200 bg-amber-50/20 rounded-xl p-5 space-y-4 hover:border-amber-300 transition-colors">
+                        <label class="flex items-start gap-4 cursor-pointer">
+                            <input type="checkbox" onchange="updateProgress()" class="spec-checkbox w-5.5 h-5.5 mt-0.5 rounded text-emerald-600 focus:ring-emerald-500 border-slate-300">
+                            <div class="space-y-1">
+                                <span class="font-bold text-sm text-slate-900 block">5. AIハルシネーション対策と営業ヒアリング・調整連携への認識一致</span>
+                                <span class="text-xs text-slate-500 leading-relaxed block">
+                                    店舗情報の変更（営業時間等）の有無を営業担当が定期ヒアリングし、ジラーチ社がデータチューニングを施すハルシネーション（AI誤情報生成）防止フローへの同意。
+                                </span>
+                            </div>
+                        </label>
+                        
+                        <details id="hallucination-details" class="border-t border-amber-200/60 pt-4 mt-2">
+                            <summary class="flex items-center justify-between text-xs text-emerald-700 font-extrabold cursor-pointer select-none bg-emerald-50 hover:bg-emerald-100/80 border border-emerald-200 rounded-xl py-3.5 px-4 transition-all duration-200 active:scale-[0.99] outline-none shadow-sm hover:shadow">
+                                <span class="flex items-center gap-1.5">
+                                    <i data-lucide="shield-alert" class="w-4 h-4"></i>
+                                    詳細な仕様・防止フローを見る
+                                </span>
+                                <i data-lucide="chevron-down" class="w-4 h-4 chevron-icon"></i>
+                            </summary>
+                            <div class="mt-4 p-5 md:p-6 bg-white/90 rounded-xl border border-amber-100 shadow-sm space-y-6">
+                                <div class="space-y-6 text-left text-xs">
+                                    <p class="text-slate-650 text-xs">
+                                        AIが古い情報や誤った営業時間等を生成して投稿・返信するリスク（ハルシネーション）を防ぐための、営業 ✕ 開発の連携運用フローです。
+                                    </p>
+
+                                    <!-- 防止フローのステップ -->
+                                    <div class="grid sm:grid-cols-2 gap-4">
+                                        <div class="bg-slate-50 border border-slate-200 p-4 rounded-lg space-y-1.5">
+                                            <span class="font-bold text-[11px] text-slate-900 flex items-center gap-1">
+                                                <span class="bg-amber-100 text-amber-800 text-[9px] w-4 h-4 rounded-full flex items-center justify-center font-bold">1</span>
+                                                営業担当による定期ヒアリング
+                                            </span>
+                                            <p class="text-[11px] text-slate-505 leading-relaxed">
+                                                365MEOの営業担当から店舗オーナーへ定期的に連絡を取り、「店舗の営業時間、メニュー、休業日など、前回の連絡から変更点がないか」をヒアリングします。
+                                            </p>
+                                        </div>
+                                        <div class="bg-slate-50 border border-slate-200 p-4 rounded-lg space-y-1.5">
+                                            <span class="font-bold text-[11px] text-slate-900 flex items-center gap-1">
+                                                <span class="bg-amber-100 text-amber-800 text-[9px] w-4 h-4 rounded-full flex items-center justify-center font-bold">2</span>
+                                                ジラーチ社によるデータ調整
+                                            </span>
+                                            <p class="text-[11px] text-slate-505 leading-relaxed">
+                                                営業担当から共有された営業時間等の変更点を受け、ジラーチ社（開発側）がAIプロンプトや店舗マスタデータを更新し、誤情報（ハルシネーション）を防止するチューニングを実施します。
+                                            </p>
+                                        </div>
+                                    </div>
+
+                                    <!-- 認識合わせしたいこと（協議事項） -->
+                                    <div class="space-y-2 pt-4 border-t border-dashed border-slate-300 text-left">
+                                        <span class="text-xs font-black tracking-widest text-brandBlue-600 uppercase flex items-center gap-1.5 font-bold">
+                                            <i data-lucide="help-circle" class="w-3.5 h-3.5"></i>
+                                            認識合わせしたいこと（協議事項）
+                                        </span>
+                                        <p class="text-xs text-slate-800 leading-relaxed font-semibold">
+                                            Q. 365MEOのアフターフォロー（定期ヒアリング業務）にかかる人件費は、予算に含まれていますか？
+                                        </p>
+                                        <p class="text-[11px] text-slate-600 leading-relaxed">
+                                            ※ 営業担当が各店舗に定期連絡を繰り返す運用コストが、既存 of プロジェクト予算および販売モデル（月額19,800円の利益構造）の想定範囲内に含まれているかをすり合わせる必要があります。
+                                        </p>
+                                    </div>
+                                </div>
+
+                                <!-- 閉じるボタン -->
+                                <div class="mt-6 pt-4 border-t border-amber-100 flex justify-end no-print">
+                                    <button type="button" onclick="closeDetails(event, 'hallucination-details')" class="bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold px-4.5 py-2.5 rounded-xl transition-all flex items-center gap-1.5 shadow-md hover:shadow-lg active:scale-95">
+                                        <i data-lucide="chevron-up" class="w-4 h-4"></i>
+                                        この詳細仕様を閉じる
+                                    </button>
+                                </div>
+                            </div>
+                        </details>
+                    </div>
+                </div>
+
+                <!-- 認識確認サイン -->
+                <div class="pt-6 border-t border-slate-200 grid sm:grid-cols-3 gap-6 text-xs text-slate-600 text-center">
+                    <div class="border border-slate-200 p-4 rounded-xl bg-slate-50/50 space-y-1">
+                        <div class="text-slate-400 font-bold uppercase tracking-wider text-[9px]">BUSINESS & SALES OWNER</div>
+                        <div class="font-extrabold text-sm text-slate-955">株式会社３６５</div>
+                        <div class="font-bold text-xs">代表取締役 祖父江 氏</div>
+                        <div class="pt-2 text-[10px] text-slate-400">認識確認：[ チェックにより確認済 ]</div>
+                    </div>
+                    <div class="border border-slate-200 p-4 rounded-xl bg-slate-50/50 space-y-1">
+                        <div class="text-slate-400 font-bold uppercase tracking-wider text-[9px]">MEO SPEC ARCHITECT</div>
+                        <div class="font-extrabold text-sm text-slate-955">合同会社THANX CREATE</div>
+                        <div class="font-bold text-xs">代表 都田 氏</div>
+                        <div class="pt-2 text-[10px] text-slate-400">認識確認：[ チェックにより確認済 ]</div>
+                    </div>
+                    <div class="border border-slate-200 p-4 rounded-xl bg-slate-50/50 space-y-1">
+                        <div class="text-slate-400 font-bold uppercase tracking-wider text-[9px]">TECHNICAL DEVELOPMENT</div>
+                        <div class="font-extrabold text-sm text-slate-955">株式会社ジラーチ</div>
+                        <div class="font-bold text-xs">代表取締役 長田 氏</div>
+                        <div class="pt-2 text-[10px] text-slate-400">認識確認：[ チェックにより確認済 ]</div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- 今後のご提案・要協議事項 -->
+        <section id="proposals" class="space-y-6">
+            <div class="flex items-center gap-3 border-b border-slate-200 pb-3">
+                <span class="bg-amber-100 text-amber-700 p-1.5 rounded-md"><i data-lucide="lightbulb" class="w-5 h-5"></i></span>
+                <h2 class="text-2xl font-bold text-slate-900">今後のご提案・要協議事項（顔合わせ後の追加提案）</h2>
+            </div>
+            
+            <p class="text-slate-600 text-sm">
+                事業拡大・付加価値向上のために挙がっている新規の追加ご提案です。今後のプロジェクト進捗や優先度に合わせて、3者で個別に協議・決定します。
+            </p>
+
+            <div class="bg-white rounded-2xl border border-slate-200 p-6 md:p-8 shadow-md space-y-6">
+                <div class="space-y-6">
+                    <!-- 提案1: モンキーテスト診断 (オレンジ) -->
+                    <div class="border border-amber-200 bg-amber-50/20 rounded-xl p-5 space-y-4 hover:border-amber-300 transition-colors">
+                        <div class="space-y-1">
+                            <span class="bg-amber-100 text-amber-800 text-[10px] font-bold px-2 py-0.5 rounded uppercase tracking-wider inline-block">Proposal 1 (ジラーチ長田氏 提案)</span>
+                            <span class="font-bold text-sm text-slate-900 block">フロント営業フック「モンキーテスト診断」の検討</span>
+                            <span class="text-xs text-slate-500 leading-relaxed block">
+                                他社MEO契約中の店舗に「集客効果が最大化されていない状況（不毛な順位争いによる複数ワード露出漏れ等）」を5,000円で監査・診断し、365MEOへ乗り換えた場合は診断料をキャッシュバック（ジラーチ側が負担）して実質無料化する営業フック提案。
+                            </span>
+                        </div>
+                        
+                        <details id="diagnosis-details" class="border-t border-amber-200/60 pt-4 mt-2">
+                            <summary class="flex items-center justify-between text-xs text-brandBlue-700 font-extrabold cursor-pointer select-none bg-brandBlue-50 hover:bg-brandBlue-100/80 border border-brandBlue-200 rounded-xl py-3.5 px-4 transition-all duration-200 active:scale-[0.99] outline-none shadow-sm hover:shadow">
+                                <span class="flex items-center gap-1.5">
+                                    <i data-lucide="search" class="w-4 h-4"></i>
+                                    詳細な提案内容・キャッシュバック仕様を見る
+                                </span>
+                                <i data-lucide="chevron-down" class="w-4 h-4 chevron-icon"></i>
+                            </summary>
+                            <div class="mt-4 p-5 md:p-6 bg-white/90 rounded-xl border border-amber-100 shadow-sm space-y-6">
+                                <div class="space-y-4 text-left">
+                                    <div class="bg-blue-50 border border-brandBlue-200 text-brandBlue-900 px-4 py-2.5 rounded-xl text-xs">
+                                        ジラーチ検証チームが都田代表の診断基準に基づき、他社MEO対策の放置や規約違反を客観的にチェックしレポート化する営業スキームです。
+                                    </div>
+                                    
+                                    <!-- ステップ図 -->
+                                    <div class="grid sm:grid-cols-4 gap-4 pt-2">
+                                        <div class="bg-white p-3 rounded-lg border border-slate-200 relative shadow-sm">
+                                            <span class="absolute top-1.5 left-1.5 bg-slate-900 text-white text-[9px] font-bold w-4 h-4 rounded-full flex items-center justify-center">1</span>
+                                            <div class="pt-2 text-center">
+                                                <h4 class="font-bold text-slate-900 text-xs">診断の提案</h4>
+                                                <p class="text-[10px] text-slate-505 leading-normal text-left mt-1">
+                                                    他社契約中の店舗オーナーへ、検証のプロによるMEO設定監査（5,000円）を提案。
+                                                </p>
+                                            </div>
+                                        </div>
+                                        <div class="bg-white p-3 rounded-lg border border-slate-200 relative shadow-sm">
+                                            <span class="absolute top-1.5 left-1.5 bg-slate-900 text-white text-[9px] font-bold w-4 h-4 rounded-full flex items-center justify-center">2</span>
+                                            <div class="pt-2 text-center">
+                                                <h4 class="font-bold text-slate-900 text-xs">厳格なプロ監査</h4>
+                                                <p class="text-[10px] text-slate-550 leading-normal text-left mt-1">
+                                                    ジラーチの検証体制で、不毛な順位争い、複数キーワード露出漏れ、返信放置等を厳格チェック。
+                                                </p>
+                                            </div>
+                                        </div>
+                                        <div class="bg-white p-3 rounded-lg border border-slate-200 relative shadow-sm">
+                                            <span class="absolute top-1.5 left-1.5 bg-slate-900 text-white text-[9px] font-bold w-4 h-4 rounded-full flex items-center justify-center">3</span>
+                                            <div class="pt-2 text-center">
+                                                <h4 class="font-bold text-slate-900 text-xs">客観レポート提出</h4>
+                                                <p class="text-[10px] text-slate-505 leading-normal text-left mt-1">
+                                                    客観的事実に基づいたフェアな監査判定レポートを店舗オーナーに提出。
+                                                </p>
+                                            </div>
+                                        </div>
+                                        <div class="bg-emerald-50 p-3 rounded-lg border-2 border-emerald-500 relative shadow-sm">
+                                            <span class="absolute top-1.5 left-1.5 bg-emerald-600 text-white text-[9px] font-bold w-4 h-4 rounded-full flex items-center justify-center">4</span>
+                                            <div class="pt-2 text-center">
+                                                <h4 class="font-bold text-emerald-950 text-xs">移行で実質無料化</h4>
+                                                <p class="text-[10px] text-emerald-900 leading-normal text-left mt-1">
+                                                    365MEOリプレイス移行で、<strong>診断費5,000円を全額キャッシュバック（ジラーチ側が負担）</strong>。
+                                                </p>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <!-- 詳細判断のロジック説明 -->
+                                    <div class="bg-white rounded-xl border border-slate-200 p-4 space-y-3">
+                                        <h3 class="text-xs font-bold text-slate-900 border-b border-slate-100 pb-2">
+                                            レポート提出後の判定アプローチ
+                                        </h3>
+                                        <div class="grid sm:grid-cols-2 gap-4 text-[11px] leading-relaxed">
+                                            <div class="border border-slate-100 p-3 rounded-lg bg-slate-50/50">
+                                                <span class="font-bold text-slate-800 block mb-1">■ 判定：優良・問題なしの場合</span>
+                                                <p class="text-slate-500">
+                                                    現在の運用に不備がない旨をありのまま記載し信頼を獲得。金額面（月額19,800円（税込））の優位性のみを比較提案します。
+                                                </p>
+                                            </div>
+                                            <div class="border-2 border-emerald-500 p-3 rounded-lg bg-emerald-50/10">
+                                                <span class="font-bold text-emerald-955 block mb-1">■ 判定：集客効果が最大化できていない場合</span>
+                                                <p class="text-slate-700">
+                                                    不毛な順位争いによる複数ワード露出漏れ、実集客の機会損失などを可視化。365MEO移行で診断料5,000円を全額返金（ジラーチ全額自己負担）します。
+                                                </p>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <!-- 認識合わせしたいこと（協議事項） -->
+                                    <div class="space-y-2 pt-4 border-t border-dashed border-slate-300 text-left">
+                                        <span class="text-xs font-black tracking-widest text-emerald-600 uppercase flex items-center gap-1.5 font-bold">
+                                            <i data-lucide="help-circle" class="w-3.5 h-3.5"></i>
+                                            認識合わせしたいこと（協議事項）
+                                        </span>
+                                        <p class="text-xs text-slate-800 leading-relaxed font-semibold">
+                                            Q. 診断時の具体的な「テスト項目（評価基準）」について、THANX CREATE都田氏と共同策定する方向で良いでしょうか？
+                                        </p>
+                                        <p class="text-[11px] text-slate-600 leading-relaxed">
+                                            ※ 「どのような状態をもって『効果が最大化されていない』と定義し、監査判定するか」の具体的な監査チェックリストを、後日都田様と擦り合わせの上、実運用の基準として設計します。
+                                        </p>
+                                    </div>
+                                </div>
+                                <!-- 閉じるボタン -->
+                                <div class="mt-6 pt-4 border-t border-amber-100 flex justify-end no-print">
+                                    <button type="button" onclick="closeDetails(event, 'diagnosis-details')" class="bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold px-4.5 py-2.5 rounded-xl transition-all flex items-center gap-1.5 shadow-md hover:shadow-lg active:scale-95">
+                                        <i data-lucide="chevron-up" class="w-4 h-4"></i>
+                                        この提案を閉じる
+                                    </button>
+                                </div>
+                            </div>
+                        </details>
+                    </div>
+
+                    <!-- 提案2: 定期成果レポート (ライトブルー) -->
+                    <div class="border border-brandBlue-200 bg-brandBlue-50/20 rounded-xl p-5 space-y-4 hover:border-brandBlue-300 transition-colors">
+                        <div class="space-y-1">
+                            <span class="bg-rose-100 text-rose-800 text-[10px] font-bold px-2 py-0.5 rounded uppercase tracking-wider inline-block">【見送り決定】Proposal 2</span>
+                            <span class="font-bold text-sm text-slate-900 block line-through text-slate-500">顧客価値実感のための「定期成果レポート機能」の検討</span>
+                            <span class="text-xs text-slate-500 leading-relaxed block">
+                                【合意結果】THANX側にて「ジャイロン（Gyro-n / 1アカウント1,000〜1,500円想定）」を単独利用して成果レポートを作成することとなりました。本システム（365MEO）へレポート機能を組み込む必要はなく、GBPへ直接アクセスして独立稼働できるため、開発見送りとなりました。
+                            </span>
+                        </div>
+                        
+                        <details id="report-details" class="border-t border-brandBlue-200/60 pt-4 mt-2">
+                            <summary class="flex items-center justify-between text-xs text-rose-700 font-extrabold cursor-pointer select-none bg-rose-50 hover:bg-rose-100/80 border border-rose-200 rounded-xl py-3.5 px-4 transition-all duration-200 active:scale-[0.99] outline-none shadow-sm hover:shadow">
+                                <span class="flex items-center gap-1.5">
+                                    <i data-lucide="slash" class="w-4 h-4 text-rose-600"></i>
+                                    合意結果と見送りの背景を見る
+                                </span>
+                                <i data-lucide="chevron-down" class="w-4 h-4 chevron-icon"></i>
+                            </summary>
+                            <div class="mt-4 p-5 md:p-6 bg-white/90 rounded-xl border border-rose-100 shadow-sm space-y-6">
+                                <div class="space-y-4 text-left">
+                                    <div class="bg-rose-50 border border-rose-200 text-rose-900 px-4 py-2.5 rounded-xl text-xs">
+                                        月次成果レポートの提供方法についての検討は、以下の合意内容に基づき「開発見送り」となりました。
+                                    </div>
+
+                                    <div class="bg-white rounded-xl border border-slate-200 p-4 space-y-3 shadow-sm text-xs leading-relaxed text-slate-650">
+                                        <p class="font-bold text-slate-900 flex items-center gap-1">
+                                            <i data-lucide="check" class="w-4 h-4 text-emerald-600"></i>
+                                            合意決定事項
+                                        </p>
+                                        <ul class="list-disc pl-5 space-y-1.5 text-slate-600 text-[11px]">
+                                            <li><strong>外部サービス「ジャイロン（Gyro-n）」の採用:</strong> THANX側にてジャイロン（月額1,000〜1,500円/アカウント想定）を単独利用して月次レポートを作成します。</li>
+                                            <li><strong>GBPへ直接アクセス:</strong> ジャイロンから直接Googleビジネスプロフィール（GBP）へアクセスして独立してレポート作成が可能です。</li>
+                                            <li><strong>365MEOへの組み込み不要:</strong> 上記運用でレポート業務が独立して完結できるため、本システム（365MEO）へレポート機能や集計エンジンを開発・組み込む必要はありません。これにより、開発工数・コストが削減されました。</li>
+                                        </ul>
+                                    </div>
+                                </div>
+                                <!-- 閉じるボタン -->
+                                <div class="mt-6 pt-4 border-t border-rose-100 flex justify-end no-print">
+                                    <button type="button" onclick="closeDetails(event, 'report-details')" class="bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold px-4.5 py-2.5 rounded-xl transition-all flex items-center gap-1.5 shadow-md hover:shadow-lg active:scale-95">
+                                        <i data-lucide="chevron-up" class="w-4 h-4"></i>
+                                        この提案を閉じる
+                                    </button>
+                                </div>
+                            </div>
+                        </details>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- フィードバック・ご質問への回答（協議履歴） -->
+        <section id="feedback" class="space-y-6 mt-12">
+            <div class="flex items-center gap-3 border-b border-slate-200 pb-3">
+                <span class="bg-brandBlue-100 text-brandBlue-700 p-1.5 rounded-md"><i data-lucide="message-square-plus" class="w-5 h-5"></i></span>
+                <h2 class="text-2xl font-bold text-slate-900">フィードバック・ご質問への回答（協議履歴）</h2>
+            </div>
+            
+            <div class="bg-white rounded-2xl border border-slate-200 p-6 md:p-8 shadow-md space-y-6">
+                <!-- 質問カード -->
+                <div class="border border-slate-200 bg-slate-50/50 rounded-xl p-5 space-y-4">
+                    <div class="space-y-2 text-left">
+                        <span class="text-xs font-black tracking-widest text-brandBlue-600 uppercase flex items-center gap-1.5 font-bold">
+                            <i data-lucide="help-circle" class="w-3.5 h-3.5"></i>
+                            都田氏からのご質問（ランニングコスト関連）
+                        </span>
+                        <h3 class="text-sm font-bold text-slate-900 leading-relaxed">
+                            Q. システム運用にかかるサーバー代や、AIのAPIクレジット費用（ランニングコスト）はどれくらいを見込んでおけば良いでしょうか？
+                        </h3>
+                        
+                        <!-- 回答 -->
+                        <div class="bg-emerald-50 border border-emerald-200 rounded-xl p-5 space-y-4 mt-4">
+                            <span class="text-xs font-bold text-emerald-800 flex items-center gap-1.5">
+                                <i data-lucide="check-circle2" class="w-4 h-4"></i>
+                                回答：【サーバー代 ✕ AI費用シミュレーション】
+                            </span>
+                            <div class="text-[11px] text-slate-700 space-y-4 leading-relaxed">
+                                <p class="font-bold text-slate-900 border-b border-emerald-200/60 pb-1.5 flex items-center gap-1">
+                                    <i data-lucide="server" class="w-3.5 h-3.5 text-emerald-600"></i>
+                                    1. サーバー代のシミュレーション（固定・準固定費）
+                                </p>
+                                <div class="overflow-x-auto">
+                                    <table class="min-w-full text-[10px] text-slate-600 border border-slate-200 rounded-lg overflow-hidden">
+                                        <thead class="bg-slate-100 text-slate-800 font-bold">
+                                            <tr>
+                                                <th class="px-3 py-2 border-b border-slate-200 text-left">想定契約店舗数</th>
+                                                <th class="px-3 py-2 border-b border-slate-200 text-left">月額サーバー総額の目安</th>
+                                                <th class="px-3 py-2 border-b border-slate-200 text-left">1店舗あたりの月間コスト</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            <tr class="bg-white hover:bg-slate-50/50">
+                                                <td class="px-3 py-2 border-b border-slate-200 font-semibold text-slate-950">100 店舗</td>
+                                                <td class="px-3 py-2 border-b border-slate-200">5,100円 / 月 <span class="text-[9px] text-slate-400 font-normal">(ストレージ代含)</span></td>
+                                                <td class="px-3 py-2 border-b border-slate-200 font-bold text-emerald-700">約 51 円</td>
+                                            </tr>
+                                            <tr class="bg-slate-50/20 hover:bg-slate-50/50">
+                                                <td class="px-3 py-2 border-b border-slate-200 font-semibold text-slate-950">1,000 店舗</td>
+                                                <td class="px-3 py-2 border-b border-slate-200">15,700円 / 月 <span class="text-[9px] text-slate-400 font-normal">(ストレージ代含)</span></td>
+                                                <td class="px-3 py-2 border-b border-slate-200 font-bold text-emerald-700">約 16 円</td>
+                                            </tr>
+                                            <tr class="bg-white hover:bg-slate-50/50">
+                                                <td class="px-3 py-2 border-b border-slate-200 font-semibold text-slate-950">10,000 店舗</td>
+                                                <td class="px-3 py-2 border-b border-slate-200">86,800円 / 月 <span class="text-[9px] text-slate-400 font-normal">(ストレージ代含)</span></td>
+                                                <td class="px-3 py-2 border-b border-slate-200 font-bold text-emerald-700">約 9 円</td>
+                                            </tr>
+                                        </tbody>
+                                    </table>
+                                </div>
+                                <p class="text-[10px] text-slate-500 border-b border-emerald-200/60 pb-2">
+                                    ※ <strong>ストック画像保管用ストレージ費用を含みます：</strong> 1店舗あたり最大100枚の画像（平均3MB/枚＝計300MB/店舗）を３６５MEO側でストック保管する前提で再計算しています。<br>
+                                    ※ 画像ストレージには世界最安水準でデータ転送量無料の「Cloudflare R2（1GBあたり約2.25円/月）」を採用します。10,000店舗分（計3TB・約3万枚）を保管してもストレージ費用は<strong>月額わずか約6,750円（1店舗あたり約0.68円）</strong>であり、全体の費用感にほぼ影響はありません。
+                                </p>
+                                <div class="bg-white p-3 rounded-lg border border-emerald-100 text-[10px] text-slate-650 space-y-1 shadow-inner">
+                                    <p class="font-bold text-slate-900 flex items-center gap-1">
+                                        <i data-lucide="info" class="w-3.5 h-3.5 text-emerald-600"></i>
+                                        【合意事項】ストック画像の上限について
+                                    </p>
+                                    <p class="text-slate-600">
+                                        コストが極めて安価なため、<strong>加盟店向けには「ストック画像上限なし（無制限）」を強力なメリットとして提供する方針</strong>で決定します。
+                                    </p>
+                                    <p class="text-[9px] text-slate-500 leading-normal">
+                                        ※システム安全運用のための措置（バグによる無限自動保存や悪意ある超巨大ファイルのアップロード対策）として、<strong>①1ファイル最大10MB制限</strong>、<strong>②バックグラウンドでの画像自動圧縮（適正サイズへの自動リサイズ）</strong>をジラーチ社側でシステム内部に実装します。これにより、ストレージ容量をさらに節約しつつ、表示速度の高速化（SEO/UX向上）も両立します。
+                                    </p>
+                                </div>
+
+                                <p class="font-bold text-slate-900 border-b border-emerald-200/60 pt-2 pb-1.5 flex items-center gap-1">
+                                    <i data-lucide="cpu" class="w-3.5 h-3.5 text-emerald-600"></i>
+                                    2. AIモデル別 API費用シミュレーション（完全従量・変動費）
+                                </p>
+                                <p class="text-[10px] text-slate-500 leading-normal">
+                                    ・<strong>1店舗あたりの月間利用量（前提）：</strong> 毎日自動投稿30回 ＋ 口コミ返信30件 ＝ 計60回生成（約8.4万トークン消費相当）<br>
+                                    ・<strong>重要：</strong> API費用は完全従量制（使った分だけの課金）のため、他社からのボリュームディスカウントがない限り、<strong>契約件数（ボリューム）によって「1店舗あたりのAPIコスト」自体は基本的に変動しません（変わらないご認識で合っています）。</strong>
+                                </p>
+                                <div class="overflow-x-auto">
+                                    <table class="min-w-full text-[10px] text-slate-600 border border-slate-200 rounded-lg overflow-hidden">
+                                        <thead class="bg-slate-100 text-slate-800 font-bold">
+                                            <tr>
+                                                <th class="px-3 py-2 border-b border-slate-200 text-left">AIモデル名 / ランク</th>
+                                                <th class="px-3 py-2 border-b border-slate-200 text-left">1店舗あたり月額費用</th>
+                                                <th class="px-3 py-2 border-b border-slate-200 text-left">100店舗</th>
+                                                <th class="px-3 py-2 border-b border-slate-200 text-left">1,000店舗</th>
+                                                <th class="px-3 py-2 border-b border-slate-200 text-left">10,000店舗</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            <tr class="bg-white hover:bg-slate-50/50">
+                                                <td class="px-3 py-2 border-b border-slate-200 font-semibold text-slate-950">Claude 3.5 Sonnet <span class="text-[9px] text-slate-400 font-normal">(超高性能)</span></td>
+                                                <td class="px-3 py-2 border-b border-slate-200 font-bold text-rose-700">約 81.0 円</td>
+                                                <td class="px-3 py-2 border-b border-slate-200">8,100円</td>
+                                                <td class="px-3 py-2 border-b border-slate-200">81,000円</td>
+                                                <td class="px-3 py-2 border-b border-slate-200">810,000円</td>
+                                            </tr>
+                                            <tr class="bg-slate-50/20 hover:bg-slate-50/50">
+                                                <td class="px-3 py-2 border-b border-slate-200 font-semibold text-slate-950">GPT-4o <span class="text-[9px] text-slate-400 font-normal">(高性能)</span></td>
+                                                <td class="px-3 py-2 border-b border-slate-200 font-bold text-amber-700">約 58.5 円</td>
+                                                <td class="px-3 py-2 border-b border-slate-200">5,850円</td>
+                                                <td class="px-3 py-2 border-b border-slate-200">58,500円</td>
+                                                <td class="px-3 py-2 border-b border-slate-200">585,000円</td>
+                                            </tr>
+                                            <tr class="bg-white hover:bg-slate-50/50">
+                                                <td class="px-3 py-2 border-b border-slate-200 font-semibold text-slate-950">GPT-4o-mini <span class="text-[9px] text-slate-400 font-normal">(軽量・安価)</span></td>
+                                                <td class="px-3 py-2 border-b border-slate-200 font-bold text-emerald-700">約 3.51 円</td>
+                                                <td class="px-3 py-2 border-b border-slate-200">351円</td>
+                                                <td class="px-3 py-2 border-b border-slate-200">3,510円</td>
+                                                <td class="px-3 py-2 border-b border-slate-200">35,100円</td>
+                                            </tr>
+                                            <tr class="bg-emerald-50/30 hover:bg-emerald-50/50 border-2 border-emerald-400/30">
+                                                <td class="px-3 py-2 border-b border-slate-200 font-bold text-emerald-955 flex items-center gap-1">Gemini 1.5 Flash <span class="text-[9px] text-emerald-600 font-semibold bg-emerald-100 px-1 rounded">最安・推奨</span></td>
+                                                <td class="px-3 py-2 border-b border-slate-200 font-bold text-emerald-800">約 1.76 円</td>
+                                                <td class="px-3 py-2 border-b border-slate-200 font-semibold">176円</td>
+                                                <td class="px-3 py-2 border-b border-slate-200 font-semibold">1,760円</td>
+                                                <td class="px-3 py-2 border-b border-slate-200 font-semibold text-emerald-900">17,600円</td>
+                                            </tr>
+                                        </tbody>
+                                    </table>
+                                </div>
+                                <div class="bg-white p-3 rounded-lg border border-emerald-100 text-[10px] text-slate-600 space-y-2.5 shadow-inner">
+                                    <p><strong>💡 結論とジラーチ社の推奨方針：</strong></p>
+                                    <p>
+                                        都田様が他事業で利用されているClaude（診断用）は高度なロジック処理が必要なため1回50円と高額ですが、今回の「MEO自動投稿・口コミ返信」はテキスト生成に特化しているため、<strong>月額クレジット単価が劇的に安い「Gemini 1.5 Flash」や「GPT-4o-mini」で十分なクオリティを達成可能</strong>です。
+                                    </p>
+                                    <p>
+                                        最安の **Gemini 1.5 Flash（月額1店舗あたりわずか約1.76円）** を採用すれば、1万店舗契約でも月間API費用はわずか1万7千円台で済みます。加盟店から月額19,800円の利用料をいただくビジネスモデルに対し、AI費用コストは **「0.01%以下」** となるため、API料金の上限課金制限や赤字化のリスクは全く考慮する必要がありません。
+                                    </p>
+                                    <div class="border-t border-dashed border-emerald-200/60 pt-2 space-y-1.5 text-[10px]">
+                                        <p class="font-bold text-slate-900 flex items-center gap-1">
+                                            <i data-lucide="info" class="w-3.5 h-3.5 text-emerald-600"></i>
+                                            【補足】AIクレジットの「上限」と「無限利用」について
+                                        </p>
+                                        <ul class="list-disc pl-4 space-y-1 text-slate-600">
+                                            <li><strong>物理的上限（無限利用の可否）:</strong> APIクレジットには「月間何回まで」という物理的な制限はありません。カードを登録して自動チャージ設定にしておけば、<strong>この低単価のまま実質無制限に使い続けることが可能</strong>です。</li>
+                                            <li><strong>セキュリティ用「予算上限」の設定:</strong> 万が一のプログラムのバグ（無限ループ等）や第三者による悪用で予期せぬ多額の請求が発生するのを防ぐため、API管理画面にて「月額最大3万円まで」などの安全な<strong>セーフティ予算上限</strong>を設定しておくことが実務上のベストプラクティスです（上限値は規模拡大に伴って自由に変更可能です）。</li>
+                                            <li><strong>他社ツールで上限が設定されている理由:</strong> 競合ツールが「月間AI生成30回まで」等の上限を設けているのは、API自体の制限ではなく、開発会社が自社の利益率を高めるための<strong>ビジネス上の制限（または上位プランへの誘導フック）</strong>です。自社システムである365MEOではその心配はありません。</li>
+                                        </ul>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- 質問の背景 -->
+                        <div class="text-[11px] text-slate-500 space-y-1 mt-4 border-t border-slate-200 pt-3 leading-relaxed">
+                            <p class="font-bold text-slate-700">【ご質問の背景（2つの懸念点）】</p>
+                            <p>1. <strong>Claude APIの単価：</strong> 現在365MEOとは別の事業でClaude APIを使った企業向け診断ツールを動かされているが、その際に「1回あたり約50円」のAPI課金コストが発生しているため、本事業でも膨大なコストがかかるのではないかという懸念。</p>
+                            <p>2. <strong>既存ツールの文章生成上限：</strong> 既存の競合MEOツールでも、AI文章作成機能に「月間の作成上限」が設けられている事例があり、それはAPI課金発生のリスクを抑えるための仕様ではないかという予想。</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- フッター -->
+        <footer class="border-t border-slate-200 pt-8 text-center space-y-3">
+            <p class="text-sm text-slate-600 leading-relaxed max-w-2xl mx-auto">
+                本仕様定義サマリーは、プロジェクト関係者の認識をすり合わせ、円滑なシステム実装を進めるための基準仕様書となります。
+                悪徳業者の駆逐と、すべての店舗オーナーの救済に向けて、高品質で圧倒的に安全なシステム開発を株式会社ジラーチが誠心誠意サポートしてまいります。
+            </p>
+            <div class="pt-2">
+                <p class="text-[10px] text-slate-400">© 2026 365MEO System Development Partner. System Specifications Summary.</p>
+            </div>
+        </footer>
+
+    </main>
+
+    <script>
+        // Lucideアイコンの初期化
+        lucide.createIcons();
+
+        // チェックリストの進捗更新用関数
+        function updateProgress() {
+            const checkboxes = document.querySelectorAll('.spec-checkbox');
+            const total = checkboxes.length;
+            let checkedCount = 0;
+
+            checkboxes.forEach(cb => {
+                if (cb.checked) {
+                    checkedCount++;
+                }
+            });
+
+            // 進捗バーとテキストの更新
+            const progressBar = document.getElementById('progress-bar');
+            const progressText = document.getElementById('progress-text');
+            
+            const percent = (checkedCount / total) * 100;
+            progressBar.style.width = percent + '%';
+            progressText.innerText = checkedCount + ' / ' + total;
+
+            // 100%完了時のエフェクト
+            if (checkedCount === total) {
+                progressText.innerHTML = checkedCount + ' / ' + total + ' <span class="text-emerald-500 font-black ml-1">★確認完了</span>';
+            }
+        }
+
+        // アコーディオンをスムーズに閉じる関数
+        function closeDetails(event, detailsId) {
+            event.preventDefault();
+            const detailsElement = document.getElementById(detailsId);
+            if (detailsElement) {
+                detailsElement.open = false;
+                // アコーディオンの親要素（カード全体）までスムーズスクロールで戻す
+                const parentCard = detailsElement.closest('.border');
+                if (parentCard) {
+                    parentCard.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+                }
+            }
+        }
+
+        // ハッシュ遷移時に該当するdetailsを自動で開く
+        window.addEventListener('hashchange', openDetailsFromHash);
+        window.addEventListener('DOMContentLoaded', openDetailsFromHash);
+
+        function openDetailsFromHash() {
+            const hash = window.location.hash;
+            if (hash) {
+                const detailsElement = document.querySelector(hash);
+                if (detailsElement && detailsElement.tagName === 'DETAILS') {
+                    detailsElement.open = true;
+                    detailsElement.scrollIntoView({ behavior: 'smooth' });
+                }
+            }
+        }
+    </script>
+</body>
+</html>

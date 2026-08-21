@@ -1,0 +1,90 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Shop {
+  id                    String        @id @default(uuid())
+  name                  String
+  email                 String        @unique
+  password              String
+  role                  String        @default("OWNER")
+  agency_name           String?       // Under which agency/franchise this shop operates
+  google_location_id    String?
+  google_drive_folder_id String?
+  line_user_id          String?
+  reply_active          Boolean       @default(true)
+  custom_review_prompt  String?
+  created_at            DateTime      @default(now())
+  updated_at            DateTime      @updatedAt
+
+  keywords              ShopKeywords?
+  templates             ReplyTemplates?
+  review_logs           ReviewLogs[]
+  magic_tokens          MagicLinkToken[]
+}
+
+model ShopKeywords {
+  id                 String   @id @default(uuid())
+  shop_id            String   @unique
+  main_keywords      String   // JSON-serialized string of main keywords array
+  sub_keywords       String   // JSON-serialized string of sub keywords array
+  fixed_footer       String?
+  custom_prompt      String?
+  hp_url             String?
+  tabelog_url        String?
+  hotpepper_url      String?
+  gurunavi_url       String?
+  gbp_action_url     String?
+  draft_posts        String?  // JSON-serialized string of 3 draft posts array
+  post_time_hour     Int      @default(12)
+  updated_at         DateTime @updatedAt
+
+  shop          Shop     @relation(fields: [shop_id], references: [id], onDelete: Cascade)
+}
+
+model ReplyTemplates {
+  id              String   @id @default(uuid())
+  shop_id         String   @unique
+  templates_star3 String   // JSON-serialized string of 5 star3 templates
+  templates_star4 String   // JSON-serialized string of 5 star4 templates
+  templates_star5 String   // JSON-serialized string of 5 star5 templates
+  updated_at      DateTime @updatedAt
+
+  shop            Shop     @relation(fields: [shop_id], references: [id], onDelete: Cascade)
+}
+
+model ReviewLogs {
+  id                  String   @id @default(uuid())
+  shop_id             String
+  review_id           String   @unique
+  reviewer_name       String
+  star_rating         Int
+  comment             String?
+  reply_text          String?
+  is_auto_replied     Boolean  @default(false)
+  requires_alert      Boolean  @default(false)
+  escalation_triggered Boolean @default(false)
+  create_time         DateTime
+  created_at          DateTime @default(now())
+
+  shop                Shop     @relation(fields: [shop_id], references: [id], onDelete: Cascade)
+}
+
+model MagicLinkToken {
+  id         String   @id @default(uuid())
+  token      String   @unique
+  shop_id    String
+  expires_at DateTime
+  is_used    Boolean  @default(false)
+  created_at DateTime @default(now())
+
+  shop       Shop     @relation(fields: [shop_id], references: [id], onDelete: Cascade)
+}

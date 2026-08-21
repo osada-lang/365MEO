@@ -1,0 +1,839 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>365MEO システム仕様決定書 兼 要件定義サマリー</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Google Fonts (Noto Sans JP) -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@300;400;500;700;900&display=swap" rel="stylesheet">
+    <!-- Lucide Icons CDN -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <style>
+        body {
+            font-family: 'Noto Sans JP', sans-serif;
+            background-color: #f8fafc;
+        }
+        /* 印刷用スタイル設定 */
+        @media print {
+            body {
+                background-color: #ffffff !important;
+                color: #0f172a !important;
+                font-size: 11pt;
+                -webkit-print-color-adjust: exact;
+                print-color-adjust: exact;
+            }
+            .no-print {
+                display: none !important;
+            }
+            .page-break {
+                page-break-before: always;
+                break-before: page;
+            }
+            .shadow-lg, .shadow-md, .shadow-sm, .shadow-xl {
+                box-shadow: none !important;
+                border: 1px solid #cbd5e1 !important;
+            }
+            .bg-gradient-to-r, .bg-gradient-to-br {
+                background: #f1f5f9 !important;
+                color: #0f172a !important;
+                border: 1px solid #94a3b8 !important;
+            }
+            .text-white {
+                color: #0f172a !important;
+            }
+            .text-slate-300, .text-slate-400 {
+                color: #475569 !important;
+            }
+            .bg-slate-900, .bg-emerald-950, .bg-blue-950, .bg-rose-950 {
+                background-color: #f8fafc !important;
+                color: #0f172a !important;
+                border: 1px solid #cbd5e1 !important;
+            }
+            .border-rose-200, .border-emerald-200, .border-slate-200 {
+                border-color: #94a3b8 !important;
+            }
+            table {
+                page-break-inside: avoid;
+            }
+            tr {
+                page-break-inside: avoid;
+                page-break-after: auto;
+            }
+            /* 印刷時にアコーディオン(details)を強制的に全開にする */
+            details {
+                display: block !important;
+                break-inside: avoid;
+            }
+            details > summary {
+                background-color: #f8fafc !important;
+                border-bottom: 1px solid #cbd5e1 !important;
+                pointer-events: none;
+            }
+            details > summary svg,
+            details > summary i,
+            details > summary span.chevron-icon {
+                display: none !important;
+            }
+            details > div, details > p, details > section, details > *:not(summary) {
+                display: block !important;
+                height: auto !important;
+            }
+            /* テーブルの印刷はみ出しとカラム千切れ防止 */
+            .overflow-x-auto {
+                overflow: visible !important;
+            }
+            table {
+                min-width: 100% !important;
+                width: 100% !important;
+                table-layout: fixed !important;
+            }
+            th, td {
+                padding: 6px 4px !important;
+                font-size: 8pt !important;
+                word-break: break-all !important;
+            }
+            th span, td span {
+                font-size: 7pt !important;
+                line-height: 1.2 !important;
+            }
+        }
+        /* 美しいカスタムスクロールバー（Webkitブラウザ用） */
+        .overflow-x-auto::-webkit-scrollbar {
+            height: 6px;
+        }
+        .overflow-x-auto::-webkit-scrollbar-track {
+            background: #f1f5f9;
+            border-radius: 3px;
+        }
+        .overflow-x-auto::-webkit-scrollbar-thumb {
+            background: #cbd5e1;
+            border-radius: 3px;
+        }
+        .overflow-x-auto::-webkit-scrollbar-thumb:hover {
+            background: #94a3b8;
+        }
+    </style>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        meo: {
+                            50: '#f0fdf4',
+                            100: '#dcfce7',
+                            600: '#16a34a', /* 365MEOブランドカラー */
+                            700: '#15803d',
+                            800: '#166534',
+                            900: '#14532d',
+                        },
+                        brandBlue: {
+                            50: '#f0f9ff',
+                            100: '#e0f2fe',
+                            200: '#bae6fd',
+                            600: '#0284c7', /* 地図やテック感を出すブルー */
+                            700: '#0369a1',
+                            900: '#0c4a6e',
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+</head>
+<body class="text-slate-800 antialiased leading-relaxed">
+
+    <!-- ナビゲーションバー (印刷非表示) -->
+    <nav class="no-print sticky top-0 z-50 bg-white/90 backdrop-blur-md border-b border-slate-200 px-6 py-4 shadow-sm">
+        <div class="max-w-6xl mx-auto flex flex-col sm:flex-row justify-between items-center gap-4">
+            <div class="flex items-center gap-3">
+                <span class="bg-meo-600 text-white p-2 rounded-lg shadow-md shadow-meo-100">
+                    <i data-lucide="shield-check" class="w-6 h-6"></i>
+                </span>
+                <div>
+                    <h1 class="font-bold text-xl tracking-wider text-slate-900 flex items-center gap-2">
+                        365MEO <span class="text-xs bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded-full font-medium border border-emerald-200">仕様決定・要件定義</span>
+                    </h1>
+                    <p class="text-xs text-slate-500">MEO自動化システム開発仕様決定書 兼 要件定義サマリー</p>
+                </div>
+            </div>
+            <button onclick="window.print()" class="flex items-center gap-2 bg-slate-900 hover:bg-slate-800 text-white px-4 py-2 rounded-lg text-sm font-medium transition shadow-sm">
+                <i data-lucide="printer" class="w-4 h-4"></i> PDF保存 / A4印刷用出力
+            </button>
+        </div>
+    </nav>
+
+    <!-- メインコンテンツ -->
+    <main class="max-w-5xl mx-auto px-4 sm:px-6 py-10 space-y-16">
+
+        <!-- ヒーロー・イントロダクション -->
+        <header class="bg-gradient-to-br from-slate-900 to-brandBlue-900 text-white rounded-3xl p-8 sm:p-12 shadow-xl relative overflow-hidden">
+            <div class="absolute inset-0 bg-[radial-gradient(circle_at_top_right,_var(--tw-gradient-stops))] from-meo-700/20 via-transparent to-transparent"></div>
+            <div class="relative z-10 space-y-6 max-w-3xl">
+                <div class="flex flex-wrap gap-2">
+                    <span class="inline-block bg-emerald-950/80 text-emerald-400 border border-emerald-800 px-3 py-1 rounded-full text-xs font-semibold tracking-wider uppercase">
+                        Agreed System Specifications
+                    </span>
+                    <span class="inline-block bg-slate-800/80 text-brandBlue-200 border border-slate-700 px-3 py-1 rounded-full text-xs font-semibold tracking-wider uppercase">
+                        仕様合意済み
+                    </span>
+                </div>
+                <h1 class="text-3xl sm:text-4xl lg:text-5xl font-extrabold tracking-tight leading-tight">
+                    MEO自動更新システム開発<br>仕様決定書 兼 要件定義サマリー
+                </h1>
+                <p class="text-slate-300 text-xs sm:text-sm leading-relaxed">
+                    本ドキュメントは、2026年7月6日の顔合わせミーティングを経て正式合意に達した<strong>「３６５代理店登録 ✕ ３６５社スタッフ承認（完全お任せサブスク型 ✕ 営業定期フォロー）」</strong>仕様に基づく、システム開発要件定義のサマリーです。店舗オーナー様に1ミリの手間も負担させず、高いセキュリティと公式ポリシーの100%遵守を両立する最高峰のプレミアムサービスを実現する開発・運用要件を定義します。
+                </p>
+                <div class="bg-emerald-950/50 border border-emerald-800/50 p-4 rounded-xl space-y-2">
+                    <span class="text-xs font-bold text-emerald-400 flex items-center gap-1"><i data-lucide="check-circle" class="w-4 h-4"></i> 顔合わせ合意事項のビジネスハイライト</span>
+                    <ul class="text-xs text-slate-200 list-none space-y-1">
+                        <li class="pl-4 relative before:absolute before:left-0 before:text-emerald-400 before:content-['✔']"><strong>月額サブスク型プランの採用</strong>: 継続的なストック収益により、365社側の投稿チェック・運用代行スタッフの人件費（管理原価）を確実に担保。</li>
+                        <li class="pl-4 relative before:absolute before:left-0 before:text-emerald-400 before:content-['✔']"><strong>店舗オーナーの手間ゼロ（完全丸投げ）</strong>: 日々の投稿承認やシステム設定、初期連携トラブルなどの面倒な作業を店舗側に一切させず、競合差別化の最大フックとなる完全自動お任せモデルを確立。</li>
+                        <li class="pl-4 relative before:absolute before:left-0 before:text-emerald-400 before:content-['✔']"><strong>営業の定期フォローによるハルシネーション完全防御</strong>: 営業担当者が顧客へ定期連絡し、「休業・営業時間の臨時変更」「料金改定や新メニュー情報」などの現場の最新情報を能動的に回収。システム登録情報を常に最新化することで、AIの虚偽情報生成を業務プロセスにおいて100%防御。</li>
+                    </ul>
+                </div>
+                <div class="pt-4 border-t border-slate-700/50 flex flex-wrap gap-y-4 gap-x-8 text-xs text-slate-400">
+                    <div class="flex items-center gap-2">
+                        <i data-lucide="file-text" class="w-4 h-4 text-emerald-400"></i>
+                        <span>ドキュメント趣旨: システム開発・要件定義用</span>
+                    </div>
+                    <div class="flex items-center gap-2">
+                        <i data-lucide="check-square" class="w-4 h-4 text-emerald-400"></i>
+                        <span>合意・決定日: 2026年7月6日 (仕様確定)</span>
+                    </div>
+                </div>
+            </div>
+        </header>
+
+        <!-- ① 簡単な仕組み（図解） -->
+        <section class="space-y-6">
+            <div class="flex items-center gap-3 border-b border-slate-200 pb-3">
+                <span class="bg-brandBlue-100 text-brandBlue-700 p-1.5 rounded-md"><i data-lucide="git-branch" class="w-5 h-5"></i></span>
+                <h2 class="text-2xl font-bold text-slate-900">① システムの標準的なAPI連携フロー</h2>
+            </div>
+            <p class="text-slate-600">
+                本システムは、生成AI（LLM）とGoogle公式のAPIを直結することで、管理画面で行う店舗の投稿更新作業をプログラム側から安全に自動実行する基本構造をとります。
+            </p>
+
+            <div class="bg-white rounded-2xl p-6 sm:p-8 shadow-sm border border-slate-200">
+                <!-- 連携フローのビジュアル図解 (Tailwind + Flex) -->
+                <div class="flex flex-col md:flex-row justify-between items-stretch gap-6 relative">
+                    
+                    <!-- STEP 1 -->
+                    <div class="flex-1 bg-slate-50 rounded-xl p-5 border border-slate-100 flex flex-col items-center text-center space-y-3 relative">
+                        <span class="absolute top-3 left-3 bg-brandBlue-600 text-white text-xs font-bold w-5 h-5 rounded-full flex items-center justify-center">1</span>
+                        <div class="bg-brandBlue-100 text-brandBlue-600 p-3 rounded-full">
+                            <i data-lucide="brain-circuit" class="w-8 h-8"></i>
+                        </div>
+                        <h3 class="font-bold text-slate-800 text-lg">システム・AI生成基盤（３６５MEO）</h3>
+                        <p class="text-xs text-slate-500">店舗の属性、ターゲット、スケジューラー設定を元に、最適な投稿文章（＆画像）をAI（LLM）が自律的またはトリガーを検知して自動生成します。</p>
+                    </div>
+
+                    <!-- ARROW 1 -->
+                    <div class="flex md:flex-col items-center justify-center text-slate-400">
+                        <i data-lucide="arrow-right" class="w-8 h-8 hidden md:block"></i>
+                        <i data-lucide="arrow-down" class="w-8 h-8 md:hidden"></i>
+                    </div>
+
+                    <!-- STEP 2 -->
+                    <div class="flex-1 bg-emerald-50/50 rounded-xl p-5 border border-emerald-100/50 flex flex-col items-center text-center space-y-3 relative">
+                        <span class="absolute top-3 left-3 bg-emerald-600 text-white text-xs font-bold w-5 h-5 rounded-full flex items-center justify-center">2</span>
+                        <div class="bg-emerald-100 text-emerald-600 p-3 rounded-full">
+                            <i data-lucide="code-2" class="w-8 h-8"></i>
+                        </div>
+                        <h3 class="font-bold text-slate-800 text-lg">Google Business Profile API</h3>
+                        <p class="text-xs text-slate-500">365MEOサーバーから顧客Googleログインや３６５代理店登録によって発行された連携許可キー（トークン）を使用し、Google公式の『LocalPosts API』を介してセキュアなREST通信を実行します。</p>
+                    </div>
+
+                    <!-- ARROW 2 -->
+                    <div class="flex md:flex-col items-center justify-center text-slate-400">
+                        <i data-lucide="arrow-right" class="w-8 h-8 hidden md:block"></i>
+                        <i data-lucide="arrow-down" class="w-8 h-8 md:hidden"></i>
+                    </div>
+
+                    <!-- STEP 3 -->
+                    <div class="flex-1 bg-amber-50/50 rounded-xl p-5 border border-amber-100/50 flex flex-col items-center text-center space-y-3 relative">
+                        <span class="absolute top-3 left-3 bg-amber-600 text-white text-xs font-bold w-5 h-5 rounded-full flex items-center justify-center">3</span>
+                        <div class="bg-amber-100 text-amber-600 p-3 rounded-full">
+                            <i data-lucide="map" class="w-8 h-8"></i>
+                        </div>
+                        <h3 class="font-bold text-slate-800 text-lg">Googleマップ・店舗反映（GBP）</h3>
+                        <p class="text-xs text-slate-500">API経由で送信された投稿データがGoogleのバリデーション審査を経て、Googleマップ上のビジネスプロフィール「最新情報」に即座に表示されます。</p>
+                    </div>
+
+                </div>
+            </div>
+        </section>
+
+        <!-- ② 技術的に可能（安心材料） -->
+        <section class="space-y-6">
+            <div class="flex items-center gap-3 border-b border-slate-200 pb-3">
+                <span class="bg-emerald-100 text-emerald-700 p-1.5 rounded-md"><i data-lucide="check-circle" class="w-5 h-5"></i></span>
+                <h2 class="text-2xl font-bold text-slate-900">② 技術的な実現可能性の客観的裏付け</h2>
+            </div>
+            <p class="text-slate-600">
+                本システムのすべての主要要件は、以下の技術仕様とGoogle公式の開発プラットフォームにより、<strong>100%実装・構築可能</strong>であることが実証されています。
+            </p>
+
+            <div class="grid md:grid-cols-3 gap-6">
+                <!-- 根拠1 -->
+                <div class="bg-white p-6 rounded-xl border border-slate-200 shadow-sm space-y-3">
+                    <div class="text-brandBlue-600"><i data-lucide="shield-check" class="w-6 h-6"></i></div>
+                    <h3 class="font-bold text-slate-900">Google公式APIのサポート</h3>
+                    <p class="text-xs text-slate-500">Googleが公式に『Google Business Profile API (旧My Business API)』を公開しています。これにより、投稿の作成・画像アップロード・口コミ返信・インサイトの取得など、管理画面上の手動操作をすべてプログラム（API）で制御できます。</p>
+                </div>
+                <!-- 根拠2 -->
+                <div class="bg-white p-6 rounded-xl border border-slate-200 shadow-sm space-y-3">
+                    <div class="text-brandBlue-600"><i data-lucide="key-round" class="w-6 h-6"></i></div>
+                    <h3 class="font-bold text-slate-900">セキュアなGoogle連携（OAuth 2.0）</h3>
+                    <p class="text-xs text-slate-500">業界標準のセキュアなマルチテナント連携をサポートします。店舗オーナーはパスワードを明かすことなく、Googleログイン連携を1クリックで行うだけで、システムにセキュアなトークン（Refresh Token）を渡して安全に連携を維持できます。</p>
+                </div>
+                <!-- 根拠3 -->
+                <div class="bg-white p-6 rounded-xl border border-slate-200 shadow-sm space-y-3">
+                    <div class="text-brandBlue-600"><i data-lucide="cpu" class="w-6 h-6"></i></div>
+                    <h3 class="font-bold text-slate-900">AIとバッチ処理のシステム同期</h3>
+                    <p class="text-xs text-slate-500">サーバー側の非同期ジョブスケジューラー（バッチ処理）と、OpenAIなどのLLM APIを連動させることで、スケジュールに応じた定期投稿を人間の操作を挟むことなく自動で処理・配信するシステムロジックが完成しています。</p>
+                </div>
+            </div>
+        </section>
+
+        <!-- ③ 開発・運用時に想定される「2つのコア問題点」 -->
+        <section class="space-y-6 page-break">
+            <div class="flex items-center gap-3 border-b border-slate-200 pb-3">
+                <span class="bg-rose-100 text-rose-700 p-1.5 rounded-md"><i data-lucide="alert-triangle" class="w-5 h-5"></i></span>
+                <h2 class="text-2xl font-bold text-slate-900">③ 開発・運用時に想定される「2つのコア問題点」</h2>
+            </div>
+            <p class="text-slate-600">
+                本システムの構築・運用にあたっては、技術的な可能性（100%可能）とは別に、サービスを安全に提供し続ける上で無視できない<strong>「2つの致命的リスク（規約リスク ✕ 暴走リスク）」</strong>が存在します。仕様策定においてこれらをどう設計・防御するかが、プロジェクト成功の極めて重要な分岐点となります。
+            </p>
+
+            <!-- ③-1. Google API規約リスク -->
+            <div class="space-y-4">
+                <h3 class="text-xl font-bold text-slate-900 flex items-center gap-2">
+                    <span class="bg-rose-100 text-rose-800 text-sm px-2.5 py-0.5 rounded-full font-bold">③-1</span>
+                    Google API規約に抵触するプロジェクト一発BANリスク（規約リスク）
+                </h3>
+                <p class="text-sm text-slate-600 leading-relaxed">
+                    店舗に顧客Googleログインで連携してもらい、システム側で<strong>「顧客の確認なしで完全自動投稿を回す」仕様（確認なし完全自動方式）は、Google APIの利用規約に直接抵触し、APIプロジェクト全体が永久停止（BAN）される致命的なリスク</strong>が存在します。
+                </p>
+
+                <div class="bg-rose-50 border border-rose-200 rounded-2xl p-6 space-y-6">
+                    <div class="flex items-start gap-4">
+                        <div class="bg-rose-600 text-white p-2 rounded-lg mt-1 shrink-0">
+                            <i data-lucide="book-open" class="w-6 h-6"></i>
+                        </div>
+                        <div class="space-y-2">
+                            <div class="flex flex-wrap items-center gap-x-3 gap-y-1">
+                                <h4 class="font-bold text-rose-900 text-lg">Google Business Profile API 公式ポリシー（重要箇所抜粋）</h4>
+                                <a href="https://developers.google.com/my-business/content/policies?hl=en" target="_blank" class="no-print inline-flex items-center gap-1 bg-rose-600 hover:bg-rose-700 text-white text-[10px] font-bold px-2 py-0.5 rounded-full transition shadow-sm">
+                                    <i data-lucide="external-link" class="w-3.5 h-3.5"></i>
+                                    <span>公式エビデンス（Developersサイト・英語原文）</span>
+                                </a>
+                            </div>
+                            <p class="text-[10px] text-rose-700 font-semibold tracking-wider flex flex-wrap items-center gap-x-2 gap-y-0.5">
+                                <span>GBP API Policies - Terms of Service</span>
+                                <span class="text-rose-600/80 font-mono">（参照URL: https://developers.google.com/my-business/content/policies?hl=en）</span>
+                            </p>
+                        </div>
+                    </div>
+
+                    <!-- 規約1 (アコーディオン) -->
+                    <details class="bg-white rounded-xl border border-rose-100 shadow-sm group overflow-hidden">
+                        <summary class="p-5 font-bold text-slate-900 flex justify-between items-center cursor-pointer list-none select-none hover:bg-rose-50/20 transition-colors">
+                            <div class="flex items-start sm:items-center gap-3 pr-4 text-left">
+                                <span class="bg-rose-100 text-rose-800 text-xs px-2.5 py-1 rounded-full font-medium shrink-0 mt-0.5 sm:mt-0">規約1</span>
+                                <span class="text-sm sm:text-base text-slate-800 font-extrabold leading-relaxed">規約１「個別審査（API申請）のない一般店舗に、365社のシステムを『踏み台・また貸し』にして裏でAPI自動連携させる行為は規約違反」</span>
+                            </div>
+                            <span class="text-slate-400 group-open:rotate-180 transition-transform duration-200 shrink-0">
+                                <i data-lucide="chevron-down" class="w-5 h-5"></i>
+                            </span>
+                        </summary>
+                        <div class="p-5 border-t border-rose-100 space-y-4 bg-rose-50/10">
+                            <div class="text-xs font-mono bg-slate-50 p-3 rounded-md text-slate-600 overflow-x-auto whitespace-pre-wrap">"You cannot allow agencies, end-clients, or other third parties to use your Business Profile project, or your own APIs, in a way that allows those third parties to avoid applying for their own Business Profile project. Any automatic or programmatic use of Business Profile by agencies or end-clients requires them to use their own Business Profile project. You cannot provide indirect access to your Business Profile project. End users of your Business Profile APIs need to manually sign in to use it. They're not allowed automatic access to make manual or programmatic changes to their accounts."</div>
+                            <p class="text-xs text-slate-700 leading-relaxed">
+                                <strong>【日本語訳例】</strong>: 代理店、エンドクライアント、またはその他の第三者が、独自のBusiness Profileプロジェクトへの申請を避ける目的で、あなたのBusiness Profileプロジェクトや独自のAPIを（間接的に）利用することを許可することはできません。代理店またはエンドクライアントによるBusiness Profileの自動的またはプログラムによる利用は、彼らが独自のBusiness Profileプロジェクトを使用することを要求します。あなたのBusiness Profileプロジェクトへの間接的なアクセスを提供することはできません。Business Profile APIのエンドユーザーは、（利用するために）手動でサインインする必要があります。アカウントに対して手動またはプログラムによる変更を行うための自動アクセス（完全自動操作）は許可されていません。
+                            </p>
+                            <p class="text-xs text-rose-600 font-semibold bg-rose-50 p-2.5 rounded border border-rose-100">
+                                💡 <strong>客観的リスク解釈</strong>: 365社が審査を取得した1つのAPIプロジェクトを使って、何百もの顧客（店舗）に対して顧客Googleログイン経由で接続させ、システムが裏で完全自動巡回・投稿を繰り返す構成は、Googleの監査において「APIの間接再販・申請回避」と見なされる対象になり得ます。
+                            </p>
+                        </div>
+                    </details>
+
+                    <!-- 規約2 (アコーディオン) -->
+                    <details class="bg-white rounded-xl border border-rose-100 shadow-sm group overflow-hidden">
+                        <summary class="p-5 font-bold text-slate-900 flex justify-between items-center cursor-pointer list-none select-none hover:bg-rose-50/20 transition-colors">
+                            <div class="flex items-start sm:items-center gap-3 pr-4 text-left">
+                                <span class="bg-rose-100 text-rose-800 text-xs px-2.5 py-1 rounded-full font-medium shrink-0 mt-0.5 sm:mt-0">規約2</span>
+                                <span class="text-sm sm:text-base text-slate-800 font-extrabold leading-relaxed">規約２「正式に身元保証（代理店招待）されたプロでない限り、店舗オーナーの確認操作（LINE承認など）を挟まない完全自動ロボット投稿は規約違反」</span>
+                            </div>
+                            <span class="text-slate-400 group-open:rotate-180 transition-transform duration-200 shrink-0">
+                                <i data-lucide="chevron-down" class="w-5 h-5"></i>
+                            </span>
+                        </summary>
+                        <div class="p-5 border-t border-rose-100 space-y-4 bg-rose-50/10">
+                            <div class="text-xs font-mono bg-slate-50 p-3 rounded-md text-slate-600 overflow-x-auto whitespace-pre-wrap">"For example, you must not automate or trigger review replies, Q&As, listing creations, listing edits, or other actions without the user's prior specific and express consent."</div>
+                            <p class="text-xs text-slate-700 leading-relaxed">
+                                <strong>【日本語訳例】</strong>: 例えば、ユーザー（店舗オーナー）の事前の具体的かつ明示的な同意を得ることなく、口コミ返信、Q&A、店舗情報の編集、投稿（listing creations）などのアクションを自動化または自動的に実行させてはなりません。
+                            </p>
+                            <p class="text-xs text-rose-600 font-semibold bg-rose-50 p-2.5 rounded border border-rose-100">
+                                💡 <strong>客観的リスク解釈</strong>: 初期連携時に「1回同意した」ことを理由に、数ヶ月にわたりユーザーの目視確認や個別同意（ポチッとボタンを押す行為）なしにシステムが自律的に何十回も自動投稿し続ける挙動は、明確な利用規約違反（自動スパム投稿）とみなされます。
+                            </p>
+                        </div>
+                    </details>
+
+                </div>
+            </div>
+
+            <!-- ③-2. AIの暴走（ハルシネーション）リスク -->
+            <div class="space-y-4 pt-4 border-t border-slate-200">
+                <h3 class="text-xl font-bold text-slate-900 flex items-center gap-2">
+                    <span class="bg-amber-100 text-amber-800 text-sm px-2.5 py-0.5 rounded-full font-bold">③-2</span>
+                    AIの暴走（ハルシネーション）に伴う店舗トラブル・ブランド毀損リスク（暴走リスク）
+                </h3>
+                <p class="text-sm text-slate-600 leading-relaxed">
+                    生成AI（LLM）は極めて高度な文章を作ることができますが、人間の目を通さずに完全自動でGoogleマップ（世界に向けて公開されている店舗の重要な看板）に投稿し続ける場合、確率的に発生する「嘘の生成（ハルシネーション）」が実店舗での深刻なトラブルを引き起こすリスクがあります。
+                </p>
+
+                <div class="bg-amber-50/50 border border-amber-200 rounded-2xl p-6 space-y-6">
+                    <div class="flex items-start gap-4">
+                        <div class="bg-amber-600 text-white p-2 rounded-lg mt-1 shrink-0">
+                            <i data-lucide="alert-circle" class="w-6 h-6"></i>
+                        </div>
+                        <div class="space-y-2">
+                            <h4 class="font-bold text-amber-900 text-lg">店舗ビジネスにおける「ハルシネーション」の実被害例</h4>
+                            <p class="text-[10px] text-amber-700 font-semibold tracking-wider font-mono">AI Runaway / Hallucination Business Risks</p>
+                        </div>
+                    </div>
+
+                    <div class="grid sm:grid-cols-3 gap-4">
+                        <!-- 被害例1 -->
+                        <div class="bg-white p-4 rounded-xl border border-amber-100 space-y-2 shadow-sm">
+                            <span class="font-bold text-slate-900 flex items-center gap-1.5 text-xs"><i data-lucide="clock" class="w-4 h-4 text-amber-600 shrink-0"></i> 営業時間・店休日の嘘情報</span>
+                            <p class="text-[11px] text-slate-500 leading-relaxed">AIが過去の無関係な学習データを元に「今週の祝日は特別営業します」と勝手に誤った営業時間を告知。それを見た顧客が来店して店が閉まっており、大クレーム・低評価の口コミに直行するリスク。</p>
+                        </div>
+                        <!-- 被害例2 -->
+                        <div class="bg-white p-4 rounded-xl border border-amber-100 space-y-2 shadow-sm">
+                            <span class="font-bold text-slate-900 flex items-center gap-1.5 text-xs"><i data-lucide="coins" class="w-4 h-4 text-amber-600 shrink-0"></i> 価格・キャンペーン内容の誤認</span>
+                            <p class="text-[11px] text-slate-500 leading-relaxed">「本日限定で全品半額」「この投稿提示でプレゼント進呈」など、プロンプトの指示を飛び越えて勝手に極端な値引きや架空のキャンペーン文を生成。実店舗で提示されて現場が混乱し、売上損失や金銭トラブルになるリスク。</p>
+                        </div>
+                        <!-- 被害例3 -->
+                        <div class="bg-white p-4 rounded-xl border border-amber-100 space-y-2 shadow-sm">
+                            <span class="font-bold text-slate-900 flex items-center gap-1.5 text-xs"><i data-lucide="thumbs-down" class="w-4 h-4 text-amber-600 shrink-0"></i> ブランド・信頼性の失墜</span>
+                            <p class="text-[11px] text-slate-500 leading-relaxed">AIが店舗に全く存在しないメニューやサービス、不自然な文言、競合他社の商品名などを勝手に生成・掲載。オーナーが気づくまでの数日間、Googleマップ上で誤情報が放置され、ブランドの信頼性を大きく毀損するリスク。</p>
+                        </div>
+                    </div>
+
+                    <!-- 365Blogへの配慮ブロック -->
+                    <div class="bg-brandBlue-50/50 text-brandBlue-950 p-5 rounded-xl space-y-2 border border-brandBlue-100">
+                        <h5 class="font-bold text-brandBlue-900 flex items-center gap-2 text-xs sm:text-sm">
+                            <i data-lucide="lightbulb" class="w-5 h-5 text-brandBlue-600 shrink-0"></i>
+                            💡 365社様の既存実績「365Blog」の完全自動化技術との関係性について
+                        </h5>
+                        <p class="text-xs leading-relaxed text-brandBlue-800">
+                            365社様はすでに、完全自動で長文ブログ記事を生成・投稿する実績ツール<strong>「365Blog」</strong>を運営されています。このシステムにおいて、プロンプトエンジニアリングやコンテンツ検証フィルターといったハルシネーション制御のノウハウを十分に蓄積されている可能性が非常に高いと推測されます。<br class="hidden sm:block">
+                            本プロジェクトにおいて、<strong>「その既存のAI制御ノウハウ（技術アセット）をそのままMEOにも移植して確認なしの完全自動で突き進む」</strong>か、あるいはMEO特有の実店舗トラブルを100%防ぐために<strong>「LINEによる顧客スマホ承認や、社内スタッフによる３６５社スタッフ承認といった二重の防御壁を用意する」</strong>かという点は、顔合わせMTGにおいて極めて建設的な「技術的議論の論点」になります。
+                        </p>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- ④. 解決策：2大リスクを完全に排除するための【2つの対抗策】 -->
+        <section class="space-y-6">
+            <div class="flex items-center gap-3 border-b border-slate-200 pb-3">
+                <span class="bg-emerald-100 text-emerald-700 p-1.5 rounded-md"><i data-lucide="shield" class="w-5 h-5"></i></span>
+                <h2 class="text-2xl font-bold text-slate-900">④ 2大リスクを完全に排除するための「2つの対抗策（本質的解決ルート）」</h2>
+            </div>
+            <p class="text-slate-600">
+                危険な「顧客Googleログインを用いた完全自動方式」を回避しつつ、Googleの厳しいAPI規約をクリアし、同時にAIのハルシネーション（暴走）による店舗トラブルを未然に防ぐための、<strong>技術的・設計的に裏付けられた本質的な解決アプローチは以下の2択に絞られます。</strong>どちらも規約リスク（③-1）と暴走リスク（③-2）の双方をスマートに完全クリアします。
+            </p>
+
+            <div class="grid md:grid-cols-2 gap-6">
+                <!-- 対策1 -->
+                <div class="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm space-y-4">
+                    <div class="flex items-center gap-2 text-brandBlue-600 font-bold border-b border-slate-100 pb-2 text-base">
+                        <i data-lucide="users" class="w-5.5 h-5.5 text-brandBlue-600 shrink-0"></i>
+                        対抗策1：公式な「代理店（管理者）」として登録（３６５代理店登録）してもらう
+                    </div>
+                    <p class="text-xs text-slate-500 leading-relaxed">
+                        店舗オーナーのプロフィール設定画面から、365社のアカウントを正式に<strong>「３６５代理店登録」</strong>してもらい、365社がすべての店舗運用を包括的に代理実行するスキームです。
+                    </p>
+                    <ul class="text-xs text-slate-600 space-y-2 list-none">
+                        <li class="pl-1 flex items-start gap-1.5"><span class="text-emerald-600 shrink-0 font-bold">✔</span><span><strong>① 規約リスクのクリア（③-1）</strong>: Google公認の「マルチロケーション代理店管理機能」を使用するため、APIの申請回避（規約1）を回避し、完全に規約に準拠（クリーンな構成）します。</span></li>
+                        <li class="pl-1 flex items-start gap-1.5"><span class="text-emerald-600 shrink-0 font-bold">✔</span><span><strong>② 暴走リスクのクリア（③-2）</strong>: 365社スタッフ確認後の配信（３６５代理店登録 ✕ ３６５社スタッフ承認）を採用することで、プロの目によるチェックが入るため、AIのハルシネーション（誤情報）の外部公開を配信前に100%遮断できます。※確認なし完全自動を選択した場合は、365社様の既存のAI制御ノウハウ（365Blog等）をダイレクトに活用して対処します。</span></li>
+                        <li class="pl-1 flex items-start gap-1.5"><span class="text-slate-400 shrink-0">■</span><span><strong>自動化の可否</strong>: 包括的に権限委任を受けているプロとしてのAPI実行のため、人間の手を挟まない「確認なし完全自動」や365社スタッフ確認後の「３６５社スタッフ承認」が公式に認められます。</span></li>
+                        <li class="pl-1 flex items-start gap-1.5"><span class="text-slate-400 shrink-0">■</span><span><strong>ビジネスへの影響</strong>: 招待設定の初期サポート、および継続的なAI APIコストの負担が発生するため、ビジネスモデルは自動的に<strong>「月額サブスクリプション（継続課金）型」</strong>にする必要があります。</span></li>
+                    </ul>
+                </div>
+
+                <!-- 対策2 -->
+                <div class="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm space-y-4">
+                    <div class="flex items-center gap-2 text-emerald-600 font-bold border-b border-slate-100 pb-2 text-base">
+                        <i data-lucide="smartphone" class="w-5.5 h-5.5 text-emerald-600 shrink-0"></i>
+                        対抗策2：顧客自身が「顧客スマホ承認」する仕様にする
+                    </div>
+                    <p class="text-xs text-slate-500 leading-relaxed">
+                        顧客はブラウザから手軽に<strong>顧客Googleログイン</strong>で接続。AIが投稿の下書きを作成しますが、Googleへ直接送信せず、<strong>顧客のスマホ（LINE連携）に通知し、顧客が承認ボタン（顧客スマホ承認）を押した瞬間のみAPIを叩く</strong>仕組みです。
+                    </p>
+                    <ul class="text-xs text-slate-600 space-y-2 list-none">
+                        <li class="pl-1 flex items-start gap-1.5"><span class="text-emerald-600 shrink-0 font-bold">✔</span><span><strong>① 規約リスクのクリア（③-1）</strong>: 投稿の都度、顧客自身が内容を確認して「OK（同意）」のタップ操作を行うため、具体的・明示的なユーザー同意（規約2）を完璧に満たし、規約違反のリスクはゼロ（100%ポリシー準拠）になります。</span></li>
+                        <li class="pl-1 flex items-start gap-1.5"><span class="text-emerald-600 shrink-0 font-bold">✔</span><span><strong>② 暴走リスクのクリア（③-2）</strong>: 投稿の前に顧客オーナー自身が内容を目視チェックするため、AIがハルシネーション（嘘情報）を生成していた場合でも、その場で却下・修正可能。実店舗へのトラブルや誤認投稿は100%完全に防げます。</span></li>
+                        <li class="pl-1 flex items-start gap-1.5"><span class="text-slate-400 shrink-0">■</span><span><strong>自動化の可否</strong>: 完全自動ではなくなりますが、顧客はLINEに届いた提案をスマホで見て「ポチッとボタンを押すだけ」なので、実質的な操作負担は極小です。</span></li>
+                        <li class="pl-1 flex items-start gap-1.5"><span class="text-slate-400 shrink-0">■</span><span><strong>ビジネスへの影響</strong>: 顧客側の操作で完結（セルフサービス）するため365社側の運用コストはゼロ。ポイント消費型など手離れのよい<strong>「売り切り（チケット・ポイント制）」</strong>モデルとしてスケールできます。</span></li>
+                    </ul>
+                </div>
+            </div>
+
+            <div class="bg-slate-100 p-4 rounded-xl border border-slate-200 flex items-start gap-2.5 text-xs text-slate-600">
+                <i data-lucide="info" class="w-4 h-4 text-brandBlue-600 shrink-0 mt-0.5"></i>
+                <p class="leading-relaxed">
+                    <strong>【結論】対抗策1（代理店・管理者枠）と対抗策2（スマホ承認フロー）は、どちらも「Googleの規約リスク（③-1）」と「AIの暴走リスク（③-2）」を根本的に完全クリアします。</strong>違いは、365社様としてビジネスを「月額サブスク型にして自社で安全性を保証（目視代行）するか（対策1）」、それとも「売り切り（ポイント）型にして自動システムとセルフ承認環境を提供するか（対策2）」という、<strong>ビジネス設計に密接に連動した技術選定</strong>になります。
+                </p>
+            </div>
+        </section>
+
+        <!-- ⑤ 仕様決定に伴う「システム構成決定マップ」 -->
+        <section class="space-y-6 page-break">
+            <div class="flex items-center gap-3 border-b border-slate-200 pb-3">
+                <span class="bg-meo-100 text-meo-700 p-1.5 rounded-md"><i data-lucide="git-fork" class="w-5 h-5"></i></span>
+                <h2 class="text-2xl font-bold text-slate-900">⑤ 仕様決定に伴う「システム構成決定マップ」</h2>
+            </div>
+            <p class="text-slate-600">
+                本システムの接続形態（代理店登録 or Googleログイン）と、投稿前のチェック方法（顧客スマホ承認 or 365社スタッフ承認 or 確認なし完全自動）の組み合わせマップです。顔合わせミーティングでの合意に基づき、店舗に一切の手間をかけない<strong>「３６５代理店登録 ✕ ３６５社スタッフ承認（完全お任せサブスク型 ✕ 営業定期フォロー）」を正式採用仕様として決定しました。</strong>
+            </p>
+
+            <div class="bg-slate-900 text-white rounded-2xl p-6 sm:p-8 space-y-8 shadow-inner">
+                <h3 class="text-xl font-bold text-center text-brandBlue-200 border-b border-slate-800 pb-4">
+                    【合意・正式決定】実装方式システム構成マッピング
+                </h3>
+
+                <!-- マップのビジュアルレイアウト -->
+                <div class="grid md:grid-cols-3 gap-6 text-sm">
+                    
+                    <!-- 検討案1: ３６５代理店登録 ✕ 顧客スマホ承認 -->
+                    <div class="bg-slate-800/40 p-6 rounded-2xl border border-slate-700/60 space-y-4 relative opacity-80">
+                        <div class="absolute -top-3 left-4 bg-slate-700 text-slate-300 text-[9px] font-bold px-3 py-1 rounded-full uppercase tracking-wider">
+                            🔍 検討案（見送り）
+                        </div>
+                        <div class="flex items-center gap-2 text-slate-400 font-bold text-base pt-2">
+                            <i data-lucide="sparkles" class="w-5 h-5 shrink-0"></i>
+                            ３６５代理店登録 ✕ 顧客スマホ承認
+                        </div>
+                        <p class="text-xs text-slate-400 leading-relaxed">
+                            下書きを店舗オーナーがスマホ（LINE）でポチッと承認して投稿する構成。最も手離れが良い構成でしたが、店舗オーナー側に一切の操作や確認の手間をかけさせず、<strong>完全に自動・丸投げでお任せいただく「完全お任せ」のプレミアムサブスク提供価値を最大化するため</strong>、今回は採用を見送りました。
+                        </p>
+                    </div>
+
+                    <!-- 検討案2: 顧客Googleログイン ✕ 顧客スマホ承認 -->
+                    <div class="bg-slate-800/40 p-6 rounded-2xl border border-slate-700/60 space-y-4 relative opacity-80">
+                        <div class="absolute -top-3 left-4 bg-slate-700 text-slate-300 text-[9px] font-bold px-3 py-1 rounded-full uppercase tracking-wider">
+                            🔍 検討案（見送り）
+                        </div>
+                        <div class="flex items-center gap-2 text-slate-400 font-bold text-base pt-2">
+                            <i data-lucide="smartphone" class="w-5 h-5 text-slate-400 shrink-0"></i>
+                            顧客Googleログイン ✕ 顧客スマホ承認
+                        </div>
+                        <p class="text-xs text-slate-400 leading-relaxed">
+                            店舗が「顧客Googleログイン」で1秒接続し、スマホで承認して投稿する構成。接続は手軽ですが、パスワード変更等で頻繁に接続が切れる（再ログイン対応の手間が発生する）課題があり、さらに店舗側に承認操作の手間がかかるため見送りといたしました。
+                        </p>
+                    </div>
+
+                    <!-- 【正式採用】：３６５代理店登録 ✕ ３６５社スタッフ承認 -->
+                    <div class="bg-slate-800/95 p-6 rounded-2xl border-2 border-emerald-500 shadow-lg shadow-emerald-950/20 space-y-4 relative">
+                        <div class="absolute -top-3 left-4 bg-emerald-500 text-white text-[10px] font-black px-3 py-1 rounded-full uppercase tracking-widest shadow-md flex items-center gap-1">
+                            <i data-lucide="crown" class="w-3 h-3"></i> 正式合意・採用仕様
+                        </div>
+                        <div class="flex items-center gap-2 text-emerald-400 font-extrabold text-base pt-2">
+                            <i data-lucide="shield-check" class="w-5.5 h-5.5 shrink-0 text-emerald-400"></i>
+                            ３６５代理店登録 ✕ ３６５社スタッフ承認
+                        </div>
+                        <p class="text-xs text-slate-200 leading-relaxed">
+                            店舗オーナー様は最初の「代理店管理者登録」のみ。日々の投稿は365社スタッフが内部管理画面ですべて目視確認して「承認・送信」を実行する、究極の<strong>「顧客完全丸投げお任せモデル」</strong>。
+                        </p>
+                        <div class="bg-emerald-950/50 p-3.5 rounded-xl border border-emerald-800/50 space-y-2.5 text-[11px] text-emerald-300">
+                            <div>
+                                <p class="font-bold flex items-center gap-1 text-emerald-400"><i data-lucide="check-circle" class="w-4 h-4"></i> ① サブスクによる人件費の完全担保</p>
+                                <p class="text-slate-300 leading-relaxed pl-5">定額サブスクリプションモデルによる安定したストック収益に基づき、365社側のチェック・運用事務コスト（スタッフ原価）を100%確実に確保できます。</p>
+                            </div>
+                            <div class="border-t border-emerald-900/50 pt-2">
+                                <p class="font-bold flex items-center gap-1 text-emerald-400"><i data-lucide="phone-call" class="w-4 h-4"></i> ② 営業の定期フォローによる完璧なリスク回避</p>
+                                <p class="text-slate-300 leading-relaxed pl-5">営業担当者が定期的に顧客へ連絡を取り、現場の「最新の変更情報（店休、メニュー変更など）」を能動的に回収・更新。AIのハルシネーション（嘘情報）を業務プロセスにより完全防御します。</p>
+                            </div>
+                        </div>
+                    </div>
+
+                </div>
+
+                <!-- 非推奨ブロック -->
+                <div class="bg-rose-950/40 p-4 rounded-xl border border-rose-900/50 flex flex-col sm:flex-row items-center justify-between gap-4 text-xs text-rose-200">
+                    <div class="flex items-center gap-2.5">
+                        <i data-lucide="alert-octagon" class="w-5 h-5 text-rose-500 shrink-0"></i>
+                        <p class="leading-relaxed">
+                            <strong>【非推奨】確認なし完全自動について</strong><br>
+                            AI生成をそのまま即時自動投稿するフローは、365社も顧客も承認なしで最も楽に見えますが、<strong>ハルシネーション（営業時間の嘘など）による実店舗クレーム大炎上リスク</strong>と、<strong>Google API規約違反（自動操作）による一発BANリスク</strong>を常に抱え続けるため、中長期のビジネススケール観点から推奨しません。
+                        </p>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- ⑥ 各方式のメリット・デメリット徹底比較 -->
+        <section class="space-y-6 page-break">
+            <div class="flex items-center gap-3 border-b border-slate-200 pb-3">
+                <span class="bg-brandBlue-100 text-brandBlue-700 p-1.5 rounded-md"><i data-lucide="layout-grid" class="w-5 h-5"></i></span>
+                <h2 class="text-2xl font-bold text-slate-900">⑥ 各方式のメリット・デメリット徹底比較</h2>
+            </div>
+            <p class="text-slate-600">
+                本システムの4つの主要パターンの比較表です。経営・運用の視点で「365MEO社様の手離れの良さ（サポートコスト）」と「リスクの低さ」がどう並び立っているかを示しています。
+            </p>
+
+            <div class="overflow-x-auto bg-white rounded-2xl border border-slate-200 shadow-sm">
+                <table class="w-full text-left border-collapse text-sm min-w-[950px] table-fixed break-all">
+                    <thead>
+                        <tr class="bg-slate-50 border-b border-slate-200 text-slate-700 font-bold">
+                            <th class="p-4 w-[16%]">比較項目</th>
+                            <th class="p-4 w-[21%] bg-emerald-50 text-emerald-800 border-x border-emerald-200 text-center">
+                                <div class="flex items-center justify-center gap-1.5 font-extrabold text-base">
+                                    <span class="w-2.5 h-2.5 rounded-full bg-emerald-500"></span>
+                                    <span>【正式採用】</span>
+                                </div>
+                                <span class="text-[10px] font-bold text-slate-700 block mt-1">３６５代理店登録 ✕ ３６５社スタッフ承認</span>
+                            </th>
+                            <th class="p-4 w-[21%] text-center">
+                                <div class="flex items-center justify-center gap-1.5 font-bold text-slate-400">
+                                    <span class="w-2 h-2 rounded-full bg-slate-300"></span>
+                                    <span>【検討案（見送り）】</span>
+                                </div>
+                                <span class="text-[10px] font-normal text-slate-500 block mt-1">３６５代理店登録 ✕ 顧客スマホ承認</span>
+                            </th>
+                            <th class="p-4 w-[21%] text-center">
+                                <div class="flex items-center justify-center gap-1.5 font-bold text-slate-400">
+                                    <span class="w-2 h-2 rounded-full bg-slate-300"></span>
+                                    <span>【検討案（見送り）】</span>
+                                </div>
+                                <span class="text-[10px] font-normal text-slate-500 block mt-1">顧客Googleログイン ✕ 顧客スマホ承認</span>
+                            </th>
+                            <th class="p-4 w-[21%] bg-rose-50 text-rose-800 border-l border-rose-200 text-center">
+                                <div class="flex items-center justify-center gap-1.5 font-bold text-rose-600">
+                                    <span class="w-2 h-2 rounded-full bg-rose-500"></span>
+                                    <span>【非推奨】</span>
+                                </div>
+                                <span class="text-[10px] font-normal text-rose-500 block mt-1">確認なし完全自動</span>
+                            </th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-slate-100 text-slate-600">
+                        <tr>
+                            <td class="p-4 font-bold bg-slate-50 text-slate-900">初期連携・安定性</td>
+                            <td class="p-4 bg-emerald-50/50 text-emerald-950 font-bold border-x border-emerald-100 text-center">
+                                <strong>◎ 永続安定 (セッション切れ0)</strong><br><span class="text-[10px] text-slate-500 font-normal">３６５代理店登録を使用するため、顧客がパスワードを変更しても連携切れトラブルが物理的に一切発生しません。</span>
+                            </td>
+                            <td class="p-4 text-center">
+                                <strong>◎ 永続安定 (セッション切れ0)</strong><br><span class="text-[10px] text-slate-500 font-normal">３６５代理店登録を使うため、顧客がパスワードを変更しても連携が外れません。</span>
+                            </td>
+                            <td class="p-4 text-center">
+                                <strong>△ やや不安定 (セッション切れ有)</strong><br><span class="text-[10px] text-slate-500 font-normal">顧客Googleログインのため、パスワード変更や期限切れで切断され、再ログインサポートの手間が発生。</span>
+                            </td>
+                            <td class="p-4 bg-rose-50/50 text-center border-l border-rose-100 text-slate-500">
+                                <strong>△〜✕ 接続形態に依存</strong><br><span class="text-[10px] text-slate-500 font-normal">顧客Googleログイン採用時は頻繁に切断。</span>
+                            </td>
+                        </tr>
+                        <tr>
+                            <td class="p-4 font-bold bg-slate-50 text-slate-900">365社側の運用コスト<br><span class="text-[10px] text-slate-400 font-normal">（チェック代行＆サポート）</span></td>
+                            <td class="p-4 bg-emerald-50/50 text-emerald-950 font-bold border-x border-emerald-100 text-center">
+                                <strong>○ 運用人手が発生 (サブスク回収)</strong><br><span class="text-[10px] text-slate-500 font-normal">すべての下書き投稿をスタッフが目視確認・承認代行しますが、サブスク収益により運用スタッフ人件費は完全に確保・回収されます。</span>
+                            </td>
+                            <td class="p-4 text-center">
+                                <strong>◎ ほぼゼロ (手離れ最大)</strong><br><span class="text-[10px] text-slate-500 font-normal">接続トラブル対応も日々の目視チェック業務も一切発生しないため、店舗規模が拡大しても人的運用コストが膨らみません。</span>
+                            </td>
+                            <td class="p-4 text-center">
+                                <strong>○ 軽微 (不定期サポート)</strong><br><span class="text-[10px] text-slate-500 font-normal">セッションが切れた店舗からの「連携が切れた」という問い合わせ対応が不定期に発生。</span>
+                            </td>
+                            <td class="p-4 bg-rose-50/50 text-center border-l border-rose-100 text-emerald-700 font-bold">
+                                <strong>◎ ゼロ</strong><br><span class="text-[10px] text-slate-500 font-normal">承認なしのため人手は不要。</span>
+                            </td>
+                        </tr>
+                        <tr>
+                            <td class="p-4 font-bold bg-slate-50 text-slate-900">AI暴走＆規約リスク</td>
+                            <td class="p-4 bg-emerald-50/50 text-emerald-800 font-bold border-x border-emerald-100 text-center">
+                                <div class="flex items-center justify-center gap-1 text-emerald-700">
+                                    <i data-lucide="shield" class="w-4 h-4 shrink-0"></i>
+                                    <span>◎ 極めて安全 (リスク0)</span>
+                                </div>
+                                <span class="text-[10px] text-slate-500 font-normal">プロの365社スタッフが事前に下書きをチェック・承認するため安全。さらに営業担当者が定期コールで店舗情報を最新に保つためハルシネーションも完全防御。</span>
+                            </td>
+                            <td class="p-4 text-center">
+                                <div class="flex items-center justify-center gap-1 text-emerald-700">
+                                    <i data-lucide="shield" class="w-4 h-4 shrink-0"></i>
+                                    <span>◎ 極めて安全 (リスク0)</span>
+                                </div>
+                                <span class="text-[10px] text-slate-500 font-normal">店舗オーナー（顧客）自身が内容を確認・スマホ承認。３６５代理店登録のためAPI BANのリスクもありません。</span>
+                            </td>
+                            <td class="p-4 text-center">
+                                <strong>○ 安全 (リスク極小)</strong><br><span class="text-[10px] text-slate-500 font-normal">店舗オーナー（顧客）自身が内容を確認・スマホ承認するため安全。ただし顧客Googleログインによる連携切れは不定期に発生。</span>
+                            </td>
+                            <td class="p-4 bg-rose-100 text-rose-950 font-extrabold border-l border-rose-200 text-center">
+                                <div class="flex items-center justify-center gap-1 text-rose-700">
+                                    <i data-lucide="alert-triangle" class="w-4 h-4 shrink-0"></i>
+                                    <span>✕ 壊滅的に高い (地雷)</span>
+                                </div>
+                                <span class="text-[10px] text-rose-800 font-normal">ハルシネーション（営業時間誤認など）で店舗が大クレーム＆自動投稿によりAPI一発BAN。</span>
+                            </td>
+                        </tr>
+                        <tr class="bg-slate-50">
+                            <td class="p-4 font-bold bg-slate-50 text-slate-900">適合可能な販売モデル<br><span class="text-[10px] text-slate-400 font-normal">（実運用上の適合形態）</span></td>
+                            <td class="p-4 bg-emerald-200 text-emerald-950 font-black text-center border-x border-emerald-300">
+                                ★ 月額定額サブスクリプション<br><span class="text-[9px] font-normal text-emerald-800">（チェック人件費や定期営業フォローコール業務コストを、毎月の継続定額収益から手厚く回収・担保できるサブスク型に最適）</span>
+                            </td>
+                            <td class="p-4 text-center text-slate-700">
+                                ○ 売り切りチケット制等<br><span class="text-[9px] font-normal text-slate-500">（手離れと運用スケーラビリティが最大のため、あらゆる課金・販売形態に対応。店舗がポチッと承認操作を行う形）</span>
+                            </td>
+                            <td class="p-4 text-center text-slate-700">
+                                ○ 売り切りチケット制<br><span class="text-[9px] font-normal text-slate-500">（接続切れ等の一時的なスポットサポート工数の発生を許容できる形態に適合）</span>
+                            </td>
+                            <td class="p-4 bg-rose-200 text-rose-950 font-black text-center border-l border-rose-300">
+                                ▲ 運用リスク最大（非推奨）<br><span class="text-[9px] font-normal text-rose-800">（仕組みとしてはチケット売り切り型等に適合可能ですが、ハルシネーションによる店舗クレームや、自動操作監視によるAPI停止のリスクを伴います）</span>
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+        <!-- ⑦ 開発システム確定仕様 ＆ 実装要件定義 -->
+        <section class="space-y-6 page-break">
+            <div class="flex items-center gap-3 border-b border-slate-200 pb-3">
+                <span class="bg-brandBlue-600 text-white p-1.5 rounded-md"><i data-lucide="check-square" class="w-5 h-5"></i></span>
+                <h2 class="text-2xl font-bold text-slate-900">⑦ 開発システム確定仕様 ＆ 実装要件定義</h2>
+            </div>
+            <p class="text-slate-600">
+                顔合わせミーティングにて正式合意した、システム実装の3つの確定コア仕様です。この要件に基づき、システム（DB設計、バックエンド、外部API通信）の実装・開発を進めます。
+            </p>
+
+            <div class="space-y-6">
+                <!-- 論点1 -->
+                <div class="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm space-y-4">
+                    <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 border-b border-slate-100 pb-3">
+                        <h3 class="text-lg font-bold text-slate-900 flex items-center gap-2">
+                            <span class="bg-brandBlue-100 text-brandBlue-700 text-xs w-6 h-6 rounded-full flex items-center justify-center font-bold">1</span>
+                            認証方式：３６５代理店登録（管理者権限共有）
+                        </h3>
+                        <span class="bg-emerald-100 text-emerald-800 text-xs px-2.5 py-0.5 rounded-full font-medium">仕様決定・実装確定</span>
+                    </div>
+                    <p class="text-sm text-slate-600 leading-relaxed">
+                        初期連携時のパスワード変更等による切断トラブルを100%防ぎ、永続的にAPI接続を維持するため、<strong>「３６５代理店登録方式」を採用</strong>します。
+                    </p>
+                    <div class="grid sm:grid-cols-2 gap-4 text-xs pt-1">
+                        <div class="border border-slate-200 p-4 rounded-xl space-y-2 opacity-60">
+                            <span class="font-bold text-slate-500 flex items-center gap-1.5"><i data-lucide="key" class="w-4 h-4 text-slate-400"></i> 顧客Googleログイン方式</span>
+                            <p class="text-slate-400">店舗オーナーにブラウザ上で「Googleログイン」させ、1秒でAPI接続。手軽ですがパスワード変更等で接続が切れてしまうため不採用といたしました。</p>
+                        </div>
+                        <div class="border-2 border-emerald-500 bg-emerald-50/20 p-4 rounded-xl space-y-2 relative">
+                            <span class="absolute top-2 right-2 bg-emerald-600 text-white text-[9px] font-bold px-1.5 py-0.5 rounded">採用確定</span>
+                            <span class="font-bold text-slate-900 flex items-center gap-1.5"><i data-lucide="check-circle" class="w-4 h-4 text-emerald-600"></i> ３６５代理店登録方式（代理店型）</span>
+                            <p class="text-slate-600">店舗オーナーに「365社のGoogleアカウント（代理店組織ID）」を管理者として招待してもらう。Google公式の多店舗管理APIに則るためセキュリティが最高峰で、接続切れのトラブル対応コストを完全にゼロにします。</p>
+                        </div>
+                    </div>
+                    <div class="bg-slate-50 p-4 rounded-xl border border-slate-100 space-y-2">
+                        <span class="text-xs font-bold text-slate-700 block">� 開発者向け実装要件（実装方針）：</span>
+                        <p class="text-xs text-slate-600 italic">Google Business Profile APIを使用する際、365MEO社の「代理店アカウント（組織ID）」を介して各店舗のロケーションIDに代理アクセスできるよう、システム内部DBに「ロケーションID」と「アカウントID（マスター）」をセキュアに紐付ける設計とします。店舗から個別のOAuthトークンを保存・リフレッシュする処理は一切不要です。</p>
+                    </div>
+                </div>
+
+                <!-- 論点2 -->
+                <div class="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm space-y-4">
+                    <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 border-b border-slate-100 pb-3">
+                        <h3 class="text-lg font-bold text-slate-900 flex items-center gap-2">
+                            <span class="bg-brandBlue-100 text-brandBlue-700 text-xs w-6 h-6 rounded-full flex items-center justify-center font-bold">2</span>
+                            承認フロー：３６５社スタッフ承認（完全お任せ型）
+                        </h3>
+                        <span class="bg-emerald-100 text-emerald-800 text-xs px-2.5 py-0.5 rounded-full font-medium">仕様決定・実装確定</span>
+                    </div>
+                    <p class="text-sm text-slate-600 leading-relaxed">
+                        店舗オーナーに日々の投稿確認の手間を一切かけさせず、且つAIのハルシネーション（誤認情報）やGoogle自動操作ポリシー違反を100%防ぐため、<strong>「３６５社スタッフ承認」を採用</strong>します。
+                    </p>
+                    <div class="grid sm:grid-cols-2 gap-4 text-xs pt-1">
+                        <div class="border border-slate-200 p-4 rounded-xl space-y-2 opacity-60">
+                            <span class="font-bold text-slate-500 flex items-center gap-1.5"><i data-lucide="zap" class="w-4 h-4 text-slate-400"></i> 完全自動（事前チェックなし）</span>
+                            <p class="text-slate-400">AIのハルシネーションがそのまま自動投稿されることによる炎上・実店舗クレーム、およびGoogleの「自動アクション（API BAN）」リスクがあるため不採用としました。</p>
+                        </div>
+                        <div class="border-2 border-emerald-500 bg-emerald-50/20 p-4 rounded-xl space-y-2 relative">
+                            <span class="absolute top-2 right-2 bg-emerald-600 text-white text-[9px] font-bold px-1.5 py-0.5 rounded">採用確定</span>
+                            <span class="font-bold text-slate-900 flex items-center gap-1.5"><i data-lucide="check-circle" class="w-4 h-4 text-emerald-600"></i> ３６５社スタッフ承認フロー</span>
+                            <p class="text-slate-600">AIが自動生成した投稿（下書き）は、Googleへ即送信せず、まずは365社スタッフ用の内部管理画面に「承認待ちリスト」としてストック。スタッフが目視チェックし、クリックした投稿のみがGoogle公式APIを介して即時投稿されます。</p>
+                        </div>
+                    </div>
+                    <div class="bg-slate-50 p-4 rounded-xl border border-slate-100 space-y-2">
+                        <span class="text-xs font-bold text-slate-700 block">� 開発者向け実装要件（実装方針）：</span>
+                        <p class="text-xs text-slate-600 italic">365社管理者が利用する「社内承認専用ダッシュボード」を開発します。全店舗の「承認待ち投稿」を一覧化し、一括でチェック・微修正・承認・送信ができる管理画面UI/UXおよび送信処理バッチを実装します。</p>
+                    </div>
+                </div>
+
+                <!-- 論点3 -->
+                <div class="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm space-y-4">
+                    <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 border-b border-slate-100 pb-3">
+                        <h3 class="text-lg font-bold text-slate-900 flex items-center gap-2">
+                            <span class="bg-brandBlue-100 text-brandBlue-700 text-xs w-6 h-6 rounded-full flex items-center justify-center font-bold">3</span>
+                            運用・ビジネスモデル：月額サブスク型 ✕ 営業定期フォロー
+                        </h3>
+                        <span class="bg-emerald-100 text-emerald-800 text-xs px-2.5 py-0.5 rounded-full font-medium">仕様決定・実装確定</span>
+                    </div>
+                    <p class="text-sm text-slate-600 leading-relaxed">
+                        ストック収益として365社側の投稿承認・代行に必要な運用人件費を完全に担保するため、<strong>「月額定額サブスクリプションモデル」を採用</strong>します。
+                    </p>
+                    <div class="grid sm:grid-cols-3 gap-4 text-xs pt-1">
+                        <div class="border-2 border-emerald-500 bg-emerald-50/20 p-4 rounded-xl space-y-2 relative col-span-3">
+                            <span class="absolute top-2 right-2 bg-emerald-600 text-white text-[9px] font-bold px-1.5 py-0.5 rounded">採用確定</span>
+                            <span class="font-bold text-slate-900 flex items-center gap-1.5"><i data-lucide="check-circle" class="w-4 h-4 text-emerald-600"></i> 月額サブスクリプションモデル</span>
+                            <p class="text-slate-600">
+                                月額料金の中にAI API（OpenAI等）の利用原価をすべて内包します。さらに、<strong>営業担当者が定期的に（月に数回）各店舗へ連絡（電話・メール・面談等）を取り、店舗情報の変化（臨時休業、新商品、メニュー価格改定など）を直接ヒアリングしてシステム側に反映。</strong>常に最新・正しい情報が登録されている環境を維持し、AIの嘘生成をシステムと人間のプロセスの両面から完璧に防御します。
+                            </p>
+                        </div>
+                    </div>
+
+                    <!-- 営業時間情報の最新化と営業担当の役割 -->
+                    <div class="bg-emerald-50 border border-emerald-200 p-4 rounded-xl text-xs text-emerald-900 space-y-1">
+                        <span class="font-bold flex items-center gap-1.5 text-emerald-800"><i data-lucide="heart-handshake" class="w-4 h-4 text-emerald-600"></i> 💡 営業担当者の定期連絡フォロープロセス</span>
+                        <p class="leading-relaxed text-[11px] text-slate-700">
+                            営業時間変更（臨時営業・店休）や、メニュー・料金改定といった「店舗の最新情報」がシステム外の業務連絡等で営業担当者へ入った際、<strong>営業担当者が365MEO管理画面から【店舗基本情報】を直接能動的にセルフ更新します。</strong><br>
+                            この定期フォローの対話（カスタマーサクセスコール）を毎月組み込むことで、システム内の情報が常に100%フレッシュに維持され、下書き生成時のハルシネーションを技術的にシャットアウトします。これこそが、他社には真似できない究極の「高満足度サブスク（完全お任せ型）」のサービス提供価値そのものとなります。
+                        </p>
+                    </div>
+
+                    <div class="bg-slate-50 p-4 rounded-xl border border-slate-100 space-y-2">
+                        <span class="text-xs font-bold text-slate-700 block">� 開発者向け実装要件（実装方針）：</span>
+                        <p class="text-xs text-slate-600 italic">365社側のAI APIキー（OpenAI等のマスターキー）を使用し、店舗ごとに1ヶ月の生成可能文字数・リクエスト回数の上限（リミッター）を設定できるガードレール機能を内部バッチ・APIハンドラ側に実装します。これにより、特定の顧客によるAIの異常大量消費に伴う原価高騰をシステム側で100%制御します。</p>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- 結び：開発パートナーからのメッセージ -->
+        <footer class="bg-slate-100 border border-slate-200 rounded-2xl p-6 sm:p-8 space-y-4">
+            <h3 class="font-bold text-slate-900 text-lg flex items-center gap-2">
+                <i data-lucide="award" class="text-emerald-600 w-5 h-5"></i>
+                開発パートナーからのメッセージ
+            </h3>
+            <p class="text-sm text-slate-600 leading-relaxed">
+                顔合わせミーティング、本当にお疲れ様でした。大前提をサブスク型にし、365社側のスタッフチェックと営業担当者の定期連絡によってハルシネーションを防ぐという今回の決定は、<strong>店舗オーナー様が「1ミリの手間もなく完全に任せられる」究極の顧客体験（圧倒的なサービス強み）</strong>を創出する最高の方針決定だと確信しております。
+            </p>
+            <p class="text-sm text-slate-600 leading-relaxed">
+                この決定により、GoogleのAPI規約・ハルシネーションの暴走リスクを100%排除しつつ、サブスクリプションの継続的なストック利益で運営を安定スケールさせる極めて強固なビジネス基盤が整いました。この合意仕様に基づき、高品質で拡張性の高いシステムの設計・開発を誠心誠意サポートしてまいります。
+            </p>
+            <div class="pt-4 text-center border-t border-slate-200">
+                <p class="text-[11px] text-slate-400">© 2026 365MEO System Development Partner. System Specifications & Requirements Definition Summary.</p>
+            </div>
+        </footer>
+
+    </main>
+
+    <script>
+        // Lucideアイコンの初期化
+        lucide.createIcons();
+    </script>
+</body>
+</html>
+
