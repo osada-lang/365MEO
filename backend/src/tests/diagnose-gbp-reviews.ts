@@ -24,10 +24,10 @@ async function diagnose() {
     return;
   }
 
-  // Hardcode 365MEO info for testing
+  // Hardcode THANX CREATE info for testing
   const shop = {
-    id: '365meo-shop-uuid',
-    name: '株式会社３６５',
+    id: 'thanx-create-uuid',
+    name: '合同会社THANX CREATE',
     google_location_id: 'locations/3018418038085555463',
     created_at: new Date('2026-08-11T00:00:00.000Z'),
     reply_active: true

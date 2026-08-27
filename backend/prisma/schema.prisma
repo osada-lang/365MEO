@@ -21,6 +21,7 @@ model Shop {
   google_drive_folder_id String?
   line_user_id          String?
   reply_active          Boolean       @default(true)
+  post_active           Boolean       @default(true)
   custom_review_prompt  String?
   created_at            DateTime      @default(now())
   updated_at            DateTime      @updatedAt

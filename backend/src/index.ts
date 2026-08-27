@@ -7,6 +7,7 @@ import { google } from 'googleapis';
 import { Client } from '@line/bot-sdk';
 import { prisma } from './services/db';
 import { ReviewHandlerService, ReviewEvent } from './services/review-handler';
+import Anthropic from '@anthropic-ai/sdk';
 
 // Load .env
 dotenv.config({ path: path.join(__dirname, '../.env') });
@@ -210,6 +211,7 @@ app.post('/api/auth/login', async (req, res) => {
         google_drive_folder_id: shop.google_drive_folder_id,
         line_user_id: shop.line_user_id,
         reply_active: shop.reply_active,
+        post_active: shop.post_active,
         custom_review_prompt: shop.custom_review_prompt,
       }
     });
@@ -289,6 +291,7 @@ app.get('/api/auth/me', async (req, res) => {
         google_drive_folder_id: shop.google_drive_folder_id,
         line_user_id: shop.line_user_id,
         reply_active: shop.reply_active,
+        post_active: shop.post_active,
         custom_review_prompt: shop.custom_review_prompt,
       },
       ...(newToken ? { newToken } : {})
@@ -299,16 +302,72 @@ app.get('/api/auth/me', async (req, res) => {
   }
 });
 
-// GET /api/shops (Get list of all stores - Master / Admin access)
+// Helper to safely extract shopId from simulated Persistent token
+function getShopIdFromToken(authHeader: string | undefined): string | null {
+  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    return null;
+  }
+  const token = authHeader.split(' ')[1];
+  if (token.startsWith('simulated_token_')) {
+    const parts = token.split('_');
+    if (parts.length < 3 || parts[0] !== 'simulated' || parts[1] !== 'token') {
+      return null;
+    }
+    return parts.slice(2, -1).join('_');
+  }
+  return null;
+}
+
+// GET /api/shops (Get list of all stores - Master / Admin / Agency access)
 app.get('/api/shops', async (req, res) => {
+  const authHeader = req.headers.authorization;
+  const callerShopId = getShopIdFromToken(authHeader);
+
+  if (!callerShopId) {
+    return res.status(401).json({ error: '認証トークンが無効または見つかりません。' });
+  }
+
   try {
-    const shops = await prisma.shop.findMany({
-      where: {
-        role: 'OWNER'
-      },
-      orderBy: { name: 'asc' }
+    const caller = await prisma.shop.findUnique({
+      where: { id: callerShopId }
     });
-    return res.json({ shops });
+
+    if (!caller) {
+      return res.status(403).json({ error: '呼び出し元のアカウントが見つかりません。' });
+    }
+
+    if (caller.role === 'ADMIN') {
+      // Master admin: Return all shops (with OWNER role only, exclude AGENCY role)
+      const shops = await prisma.shop.findMany({
+        where: {
+          role: 'OWNER'
+        },
+        orderBy: { name: 'asc' }
+      });
+      
+      // Fetch all agency accounts so they can be rendered even if they have no stores
+      const agencies = await prisma.shop.findMany({
+        where: {
+          role: 'AGENCY'
+        },
+        orderBy: { name: 'asc' }
+      });
+      
+      return res.json({ shops, agencies });
+    } else if (caller.role === 'AGENCY') {
+      // Agency manager: Return only shops where agency_name matches the agency's name or its agency_name
+      const agencyName = caller.agency_name || caller.name;
+      const shops = await prisma.shop.findMany({
+        where: {
+          role: 'OWNER',
+          agency_name: agencyName
+        },
+        orderBy: { name: 'asc' }
+      });
+      return res.json({ shops, agencies: [] });
+    } else {
+      return res.status(403).json({ error: '店舗一覧を閲覧する権限がありません。' });
+    }
   } catch (error) {
     console.error('❌ Failed to fetch shops list:', error);
     return res.status(500).json({ error: '店舗一覧の取得に失敗しました。' });
@@ -349,7 +408,7 @@ app.get('/api/shops/:shopId/dashboard', async (req, res) => {
         const driveRes = await drive.files.list({
           q: `parents in '${shop.google_drive_folder_id || 'root'}' and (mimeType = 'image/jpeg' or mimeType = 'image/png' or mimeType = 'image/jpg') and trashed = false`,
           fields: 'files(id, name)',
-          pageSize: 30,
+          pageSize: 1000,
         });
         if (driveRes.data.files) {
           imageCount = driveRes.data.files.length;
@@ -489,6 +548,7 @@ app.get('/api/shops/:shopId/dashboard', async (req, res) => {
     return res.json({
       shopName: shop.name,
       replyActive: shop.reply_active,
+      postActive: shop.post_active,
       imageCount,
       postingMode,
       postingModeLabel,
@@ -523,6 +583,24 @@ app.post('/api/shops/:shopId/toggle-reply', async (req, res) => {
   }
 });
 
+// POST /api/shops/:shopId/toggle-post
+app.post('/api/shops/:shopId/toggle-post', async (req, res) => {
+  const { shopId } = req.params;
+  const { active } = req.body;
+
+  try {
+    const updated = await prisma.shop.update({
+      where: { id: shopId },
+      data: { post_active: active },
+    });
+
+    return res.json({ success: true, postActive: updated.post_active });
+  } catch (error) {
+    console.error('❌ Toggle post error:', error);
+    return res.status(500).json({ error: '自動投稿の切り替えに失敗しました。' });
+  }
+});
+
 // GET /api/shops/:shopId/settings
 app.get('/api/shops/:shopId/settings', async (req, res) => {
   const { shopId } = req.params;
@@ -546,6 +624,7 @@ app.get('/api/shops/:shopId/settings', async (req, res) => {
       shopId: shop.id,
       shopName: shop.name,
       replyActive: shop.reply_active,
+      postActive: shop.post_active,
       customReviewPrompt: shop.custom_review_prompt || '',
       lineUserId: shop.line_user_id || '',
       keywords: {
@@ -570,7 +649,7 @@ app.get('/api/shops/:shopId/settings', async (req, res) => {
 // POST /api/shops/:shopId/settings
 app.post('/api/shops/:shopId/settings', async (req, res) => {
   const { shopId } = req.params;
-  const { replyActive, customReviewPrompt, lineUserId, keywords } = req.body;
+  const { replyActive, postActive, customReviewPrompt, lineUserId, keywords } = req.body;
 
   try {
     // 1. Update Shop Profile details
@@ -579,6 +658,7 @@ app.post('/api/shops/:shopId/settings', async (req, res) => {
       data: {
         custom_review_prompt: customReviewPrompt,
         reply_active: typeof replyActive === 'boolean' ? replyActive : true,
+        post_active: typeof postActive === 'boolean' ? postActive : true,
         line_user_id: lineUserId || null,
       }
     });
@@ -655,7 +735,7 @@ app.get('/api/shops/:shopId/drive-images', async (req, res) => {
     console.log(`📂 Scanning Google Drive folder: ${folderId}...`);
     const driveRes = await drive.files.list({
       q: `parents in '${folderId}' and (mimeType = 'image/jpeg' or mimeType = 'image/png' or mimeType = 'image/jpg') and trashed = false`,
-      pageSize: 30,
+      pageSize: 1000,
       fields: 'files(id, name, mimeType, size, createdTime)',
     });
 
@@ -939,6 +1019,12 @@ app.get('/api/shops/:shopId/reviews', async (req, res) => {
     // Dynamically fetch and sync latest reviews from GBP in real-time!
     await syncReviewsFromGBP(shopId);
 
+    const shop = await prisma.shop.findUnique({
+      where: { id: shopId },
+      select: { created_at: true }
+    });
+    const shopCreatedAt = shop?.created_at ? new Date(shop.created_at).getTime() : Date.now();
+
     const reviews = await prisma.reviewLogs.findMany({
       where: { shop_id: shopId },
       orderBy: { create_time: 'desc' },
@@ -946,7 +1032,8 @@ app.get('/api/shops/:shopId/reviews', async (req, res) => {
 
     const cleanedReviews = reviews.map(r => ({
       ...r,
-      comment: cleanGoogleComment(r.comment)
+      comment: cleanGoogleComment(r.comment),
+      is_pre_integration: new Date(r.create_time).getTime() < shopCreatedAt
     }));
 
     return res.json({ reviews: cleanedReviews });
@@ -1165,14 +1252,44 @@ async function generateSingleDraft(
     selectedSubKeywords.push(...shuffled.slice(0, Math.min(count, shuffled.length)));
   }
 
-  const geminiApiKey = process.env.GEMINI_API_KEY;
-  if (!geminiApiKey) {
-    throw new Error('Gemini APIキーが設定されていません。');
+  const claudeApiKey = process.env.CLAUDE_API_KEY;
+  if (!claudeApiKey) {
+    throw new Error('Claude APIキーが設定されていません。');
   }
 
-  const { GoogleGenerativeAI } = require('@google/generative-ai');
-  const genAI = new GoogleGenerativeAI(geminiApiKey);
-  const model = genAI.getGenerativeModel({ model: 'gemini-3.6-flash' });
+  const anthropic = new Anthropic({
+    apiKey: claudeApiKey,
+  });
+
+  // 日替わりで異なる「検索意図・文脈テーマ」を決定 (dayIndexを利用)
+  const themes = [
+    {
+      name: "悩み解決型 (Trouble Resolution)",
+      focus: "ターゲット層特有の具体的な症状やお悩み（肩こり、腰痛、首の疲れ、ゆがみなど）を切り口にし、どのようなアプローチでそれを根本からケア・解決していくのかを詳しく語る構成。"
+    },
+    {
+      name: "サービス詳細紹介型 (Service / Treatment Highlight)",
+      focus: "特定の施術プログラム、骨盤矯正や姿勢改善などの具体的施術メニューについて、その技術的特徴、得られる効果、なぜそれが必要なのかを深く解説する構成。"
+    },
+    {
+      name: "利用シーン・シチュエーション型 (Situation & Context)",
+      focus: "「仕事帰りに体をケアしたい」「土日祝日に通いたい」「家事や育児の合間にリフレッシュしたい」といった、具体的な通院・利用シチュエーションに焦点を当て、店舗の利便性や環境をアピールする構成。"
+    },
+    {
+      name: "よくある質問回答型 (FAQ / Q&A answering)",
+      focus: "患者様からよく受ける代表的な質問（例：「施術は痛いですか？」「何回くらいで効果を実感できますか？」「どんな服装で行けば良いですか？」）に対する、具体的で分かりやすい解説を提示する構成。"
+    },
+    {
+      name: "選ばれる理由・こだわり提示型 (Unique Selling Proposition)",
+      focus: "他店との圧倒的な違い、こだわり（例：完全オーダーメイドのカウンセリング、国家資格保有者の丁寧な施術、再発を防ぐための根本アプローチ）について客観的に解説する構成。"
+    },
+    {
+      name: "特定ターゲット特化アピール型 (Target Audience Appeal)",
+      focus: "「長時間のスマホ使用による眼精疲労に悩む方」「デスクワークで腰痛が慢性化しているオフィスワーカー」「産後の骨盤のゆがみが気になるママさん」など、非常に絞り込んだターゲットに対してメリットを語る構成。"
+    }
+  ];
+
+  const selectedTheme = themes[dayIndex % themes.length];
 
   // Get current date context in Japanese to naturally incorporate seasonal topics
   const todayJp = new Date().toLocaleDateString('ja-JP', {
@@ -1183,51 +1300,64 @@ async function generateSingleDraft(
   });
 
   const prompt = `
-    あなたは店舗「${shop.name}」のオーナー代理として、Googleマップ（MEO）用の日替わり投稿テキスト（おしらせ/最新情報）を自動作成してください。
+    あなたは店舗「${shop.name}」のオーナー代理として、Googleマップ（MEO）および生成AI検索（AIO/LLMO）向けに最適化された、日替わりの店舗投稿テキスト（おしらせ/最新情報）を自動作成してください。
 
-    【店舗情報】
+    【今回の投稿テーマ・検索意図】
+    - テーマ名: ${selectedTheme.name}
+    - 執筆のフォーカス: ${selectedTheme.focus}
+    ※必ずこのテーマの検索文脈・意図に完全に合致する内容で執筆してください。
+
+    【店舗基本情報】
     - 店舗名: ${shop.name}
     - ターゲット層へのアピール・トーンマナー: ${customPrompt || '親しみやすく誠実なトーン。'}
     - 今日の日付: ${todayJp}
 
     【作成の絶対ルール（厳守してください）】
-    1. 毎回異なる構成・書き出し:
-       直近の投稿や前後の下書きと、内容・書き出し（例：「こんにちは」「実は〜」など）・全体の構成が重複しないようにしてください。毎回バリエーション豊かでユニークな構成にしてください。
-    2. メインキーワードの完全含有:
+    1. 結論ファースト（PREP法）の徹底:
+       文章の冒頭（最初の一文、30〜50文字程度）で、時候の挨拶などを一切省き、「【主要キーワード/テーマ】店舗名＋エリア名＋主要サービス（結論）」を一発で言い切る形で書き出してください。
+       （例：「【骨盤矯正】静岡市の『おちあい・接骨院』では、デスクワークによる肩こりや慢性的な腰痛に寄り添った根本改善施術を行っています。」）
+    2. 主語・エリア・サービス名の明確化（5W1Hの網羅）:
+       主語を「当店」や「当院」などの曖昧な言葉にせず、必ず「${shop.name}」という具体的な店舗名で表記してください。また、エリア名（駅名・地域名）、具体的なサービス名（例：「骨盤矯正」「肩こりケア」など）を一文の中に自然に含め、AIが店舗情報を正しく紐付けられる（サイテーション）構造にしてください。
+    3. メインキーワードの完全含有:
        指定されたメインキーワード [ ${mainKeywords.join(', ')} ] を、文章全体の自然な文脈にそって【すべて必ず】本文中に含めてください。単なるキーワードの羅列や強引な詰め込みは厳禁です。
-    3. 本日のサブキーワード:
+    4. 本日のサブキーワード:
        本日の日替わりサブキーワード [ ${selectedSubKeywords.join(', ')} ] を、文章の中に自然に盛り込んでください。
-    4. 宣伝的な「事実文」を必ず1文挿入:
-       「誰が、どこで、何を提供しているか」を示す客観的・具体的な宣伝的事実文を、必ず本文の中に1文だけ織り込んでください。この事実文の言い回しやアプローチは毎回変えてください。
-    5. 段落分けと適切な改行（読みやすさ重視）:
-       文章が読みやすくなるよう、適宜2〜3つの論理的な段落に分け、段落の間に【必ず空行を1行】（改行2回）挟んでください。1行が長くなりすぎず、モバイル端末でも快適にスクロールしながら読めるスマートな体裁（MEOに最も適した配置）に仕上げてください。
-    6. 文字数と文章の質:
-       本文は【150文字〜250文字程度（改行を除く）】に収め、一般客が読んで「行ってみたい」「相談してみたい」と思える、親しみやすく自然な日本語で仕上げてください。
-    7. 連絡先や署名情報の完全排除:
-       本文の中には、ホームページURL、電話番号、アクションボタンの文言（「詳細はこちら」「今すぐ予約」など）、住所、会社名や店舗名のフッター署名などは【絶対に】含めないでください。（これらはシステム側でボタンとして登録されるため、テキスト内に記載すると重複して見苦しくなります）
-    8. 記号・装飾の完全排除:
-       絵文字、マークダウン（**、#、*など）、見出し、箇条書き、目立つ記号（■、★、◆、▲、【】など）は【一切】使わないでください。純粋な文章テキストと改行のみで出力してください。
-    9. 季節・時期の話題 of 自然な織り込み:
-       今日の日付（${todayJp}）を踏まえ、現在の季節や時期に合う話題（夏、お盆、暑さ対策など）を自然に入れられる場合は織り込んでください（無理に詰め込む必要はありません）。
+    5. 曖昧な表現の排除と一次情報・数値の提示:
+       「とても素晴らしい」「こだわりの地元の」といった抽象的な形容詞や曖昧なアピールを徹底的に排除してください。代わりに「国家資格者による丁寧な施術」「完全オーダーメイドのカウンセリング」「全身の骨格バランスを整える」といった、客観的・専門的な事実や具体的なアプローチ（一次情報）を明確に記述してください。
+    6. 特徴・こだわりの箇条書き構造化（中盤）:
+       文章の中盤部分で、今回のテーマに関連する店舗のこだわり・特徴・サービス内容を、必ず【3つの箇条書き（「・」マークを使用）】で簡潔に整理してください。LLMが最も要約・引用しやすい構造化テキストに仕上げてください。（マークダウンのアスタリスク「*」や「-」は崩れやすいため使用禁止です）
+       （箇条書き例：
+         ・〇〇：具体的かつ客観的な強みや内容を1文で。
+         ・〇〇：具体的かつ客観的な強みや内容を1文で。
+         ・〇〇：具体的かつ客観的な強みや内容を1文で。）
+    7. アクション喚起（CTA）の自然な配置（後半）:
+       文章の最後（箇条書きの後）に、ユーザーや検索者が次に取るべき行動（「お体のメンテナンスをご希望の方は、ぜひ下記の『詳細』ボタンよりメニューやご予約情報をご確認ください。」など）を明記してください。
+    8. 段落分けと空行:
+       文章全体を「①冒頭結論」「②3つの箇条書き」「③CTA」の論理的な段落に分け、段落の間には【必ず空行を1行】挟んでください。1行が長くなりすぎず、モバイル端末でもスクロールしやすい体裁に仕上げてください。
+    9. 文字数制限:
+       全体の本文は【250文字〜350文字程度（改行を除く）】に収め、一般客が読んで「行ってみたい」「相談してみたい」と思える、親しみやすく自然な日本語で仕上げてください。
+    10. 署名・連絡先・記号マークダウンの排除:
+        本文の中には、ホームページURL、電話番号、アクションボタンの文言（「詳細はこちら」「今すぐ予約」など）、住所、店舗名のフッター署名、および絵文字やマークダウン記号（**、#、*など）は【絶対に】含めないでください。純粋な文章テキストと「・」マーク、改行のみで出力してください。
 
     返される内容は自動作成した完成本文のみとし、説明、挨拶、マークダウン装飾（\`\`\`など）は一切含めないでください。`;
 
   let generatedText = '';
   try {
-    const result = await model.generateContent(prompt);
-    const response = await result.response;
-    generatedText = response.text().trim().replace(/```/g, '');
+    const response = await anthropic.messages.create({
+      model: 'claude-sonnet-5',
+      max_tokens: 600,
+      messages: [{ role: 'user', content: prompt }]
+    });
+
+    generatedText = response.content
+      .filter(block => block.type === 'text')
+      .map(block => block.text)
+      .join('\n')
+      .trim()
+      .replace(/```/g, '');
   } catch (err: any) {
-    console.warn('⚠️ gemini-3.6-flash failed or was under heavy load. Falling back to stable gemini-3.5-flash:', err.message || err);
-    try {
-      const fallbackModel = genAI.getGenerativeModel({ model: 'gemini-3.5-flash' });
-      const result = await fallbackModel.generateContent(prompt);
-      const response = await result.response;
-      generatedText = response.text().trim().replace(/```/g, '');
-    } catch (fallbackErr: any) {
-      console.error('❌ Both gemini-3.6-flash and gemini-3.5-flash failed:', fallbackErr.message || fallbackErr);
-      throw fallbackErr;
-    }
+    console.error('❌ Claude generation failed in generateSingleDraft:', err.message || err);
+    throw err;
   }
 
   return {
@@ -1292,7 +1422,7 @@ app.post('/api/shops/:shopId/draft-posts/regenerate', async (req, res) => {
         const driveRes = await drive.files.list({
           q: `parents in '${shop.google_drive_folder_id}' and (mimeType = 'image/jpeg' or mimeType = 'image/png' or mimeType = 'image/jpg') and trashed = false`,
           fields: 'files(id, name)',
-          pageSize: 30,
+          pageSize: 1000,
         });
         if (driveRes.data.files) {
           driveFilesList = driveRes.data.files.map((f: any) => ({ id: f.id || '', name: f.name || '' }));
@@ -1532,7 +1662,7 @@ async function executeDailyPostRollover(shopId: string) {
       const driveRes = await drive.files.list({
         q: `parents in '${shop.google_drive_folder_id}' and (mimeType = 'image/jpeg' or mimeType = 'image/png' or mimeType = 'image/jpg') and trashed = false`,
         fields: 'files(id, name)',
-        pageSize: 30,
+        pageSize: 1000,
       });
       if (driveRes.data.files) {
         driveFilesList = driveRes.data.files.map((f: any) => ({ id: f.id || '', name: f.name || '' }));
@@ -1693,13 +1823,56 @@ async function syncReviewsFromGBP(shopId: string) {
     if (locationPath) {
       console.log(`📡 Fetching latest GBP reviews for store: "${shop.name}"...`);
 
-      // Fetch latest 10 reviews from Google My Business API
+      // Fetch latest 50 reviews from Google My Business API to ensure a broad window for delete-detection
       const reviewsRes = await oauth2Client.request({
-        url: `https://mybusiness.googleapis.com/v4/${locationPath}/reviews`,
+        url: `https://mybusiness.googleapis.com/v4/${locationPath}/reviews?pageSize=50`,
         method: 'GET'
       });
 
       const gbpReviews = (reviewsRes.data as any).reviews || [];
+
+      // 🛡️ Safe Deletion Sync: detect reviews deleted from Google GBP
+      if (gbpReviews.length > 0) {
+        const activeReviewIds = new Set(gbpReviews.map((r: any) => r.name));
+        
+        // If the retrieved reviews from GBP is less than 50, it means we fetched the entire set of reviews for this shop.
+        // In this case, we can safely delete any local review not present in activeReviewIds regardless of its age.
+        const isEntireSet = gbpReviews.length < 50;
+
+        // Find the oldest review date in the retrieved GBP set (filtering out any invalid/NaN dates)
+        const gbpTimes = gbpReviews
+          .map((r: any) => new Date(r.createTime || '').getTime())
+          .filter((t: number) => !isNaN(t));
+
+        if (gbpTimes.length > 0) {
+          const oldestGbpTimestamp = Math.min(...gbpTimes);
+
+          // Get local reviews for this shop from the database
+          const localReviews = await prisma.reviewLogs.findMany({
+            where: { shop_id: shop.id },
+            select: { id: true, review_id: true, create_time: true }
+          });
+
+          for (const localRev of localReviews) {
+            const localTimestamp = new Date(localRev.create_time).getTime();
+
+            if (!isNaN(localTimestamp)) {
+              // We delete the local review if:
+              // 1. It is not in GMB active list
+              // 2. AND (we have fetched the entire GMB set OR the local review is within the retrieved window)
+              const isWithinWindow = localTimestamp >= oldestGbpTimestamp;
+
+              if ((isEntireSet || isWithinWindow) && !activeReviewIds.has(localRev.review_id)) {
+                console.log(`🗑️ [GBP Sync] Detected DELETED review on Google GBP. Deleting locally: ID = ${localRev.review_id}`);
+                await prisma.reviewLogs.delete({
+                  where: { id: localRev.id }
+                });
+              }
+            }
+          }
+        }
+      }
+
       for (const gReview of gbpReviews) {
         const reviewId = gReview.name; // Full resource name e.g. "accounts/X/locations/Y/reviews/Z"
         const reviewerName = gReview.reviewer?.displayName || '匿名ユーザー';
@@ -1727,10 +1900,29 @@ async function syncReviewsFromGBP(shopId: string) {
           const shopCreatedDate = new Date(shop.created_at);
 
           // SAFETY FILTER: If the review was posted prior to store registration,
-          // we import it silently as a historical review to show in the UI, but do NOT trigger any LINE alerts or AI reply drafts!
+          // we import it silently as a historical review to show in the UI, but do NOT trigger any LINE alerts or automatic posts.
+          // For unreplied historical reviews, we prepare an AI reply draft so the owner can approve it manually!
           if (reviewCreateDate < shopCreatedDate) {
             console.log(`📥 Silently importing historical pre-integration review by ${reviewerName} (Date: ${reviewCreateDate.toISOString()} < Shop Registration: ${shopCreatedDate.toISOString()}).`);
             const replyComment = gReview.reviewReply?.comment || null;
+
+            let aiDraft = replyComment;
+            if (!replyComment) {
+              try {
+                aiDraft = await reviewHandler.generateCustomApologyDraft(
+                  { starRating: starRating, comment },
+                  shop.name,
+                  shop.custom_review_prompt || undefined,
+                  '導入前の未返信口コミとして、丁寧にお礼やお詫びの下書きを作成してください。'
+                );
+                console.log(`🤖 AI historical reply draft prepared for ${reviewerName}: "${aiDraft}"`);
+              } catch (err: any) {
+                console.error(`⚠️ Failed to generate AI draft for historical review:`, err.message || err);
+                aiDraft = starRating <= 2
+                  ? 'この度はご満足いただける対応ができず誠に申し訳ありません。いただいたご意見を真摯に受け止め改善に努めてまいります。'
+                  : '温かい評価をいただき誠にありがとうございます！今後とも喜んでいただけるようサービス向上に努めてまいります。またのご来院をお待ちしております。';
+              }
+            }
 
             await prisma.reviewLogs.create({
               data: {
@@ -1739,9 +1931,9 @@ async function syncReviewsFromGBP(shopId: string) {
                 reviewer_name: reviewerName,
                 star_rating: starRating,
                 comment,
-                reply_text: replyComment,
+                reply_text: aiDraft,
                 is_auto_replied: !!replyComment, // If already replied on Google, mark true, else false
-                requires_alert: false,
+                requires_alert: false, // No LINE alerts!
                 create_time: new Date(createTime),
               }
             });
@@ -1806,7 +1998,9 @@ async function runBackgroundScheduler() {
   const googleAuthAvailable = !!(clientID && clientSecret && refreshToken);
 
   try {
+    // Only fetch OWNER shops for review sync and daily posting
     const shops = await prisma.shop.findMany({
+      where: { role: 'OWNER' },
       include: { keywords: true, templates: true },
     });
 
@@ -1838,7 +2032,7 @@ async function runBackgroundScheduler() {
 
     for (const shop of shops) {
       // 1. Check for Daily Automated Posting
-      if (shop.keywords) {
+      if (shop.post_active && shop.keywords) {
         const postTimeHour = (shop.keywords as any).post_time_hour ?? 12; // Default is 12 (Noon)
 
         // If current hour matches the store's configured posting hour
@@ -1985,94 +2179,416 @@ app.listen(port, () => {
   setTimeout(async () => {
     try {
       console.log('👤 Checking Master Account (365meo.gbp@gmail.com) initialization...');
-      const thanxOwner = await prisma.shop.findUnique({
-        where: { email: '365meo@gmail.com' }
+      
+      // Cascade delete existing records for '365meo-shop-uuid' to completely delete any old corrupted state
+      const targetThanxId = '365meo-shop-uuid';
+      console.log(`🧹 Deleting and purging 365MEO OWNER data from live database for ID: ${targetThanxId}...`);
+      await prisma.replyTemplates.deleteMany({ where: { shop_id: targetThanxId } });
+      await prisma.shopKeywords.deleteMany({ where: { shop_id: targetThanxId } });
+      await prisma.reviewLogs.deleteMany({ where: { shop_id: targetThanxId } });
+      await prisma.magicLinkToken.deleteMany({ where: { shop_id: targetThanxId } });
+      await prisma.shop.deleteMany({ where: { id: targetThanxId } });
+
+      // Search and delete by email as well to ensure total cleanup
+      const thanxByEmail = await prisma.shop.findUnique({ where: { email: '365meo@gmail.com' } });
+      if (thanxByEmail) {
+        await prisma.replyTemplates.deleteMany({ where: { shop_id: thanxByEmail.id } });
+        await prisma.shopKeywords.deleteMany({ where: { shop_id: thanxByEmail.id } });
+        await prisma.reviewLogs.deleteMany({ where: { shop_id: thanxByEmail.id } });
+        await prisma.magicLinkToken.deleteMany({ where: { shop_id: thanxByEmail.id } });
+        await prisma.shop.delete({ where: { id: thanxByEmail.id } });
+      }
+      console.log('🧹 Purge completed successfully.');
+
+      // Create a BRAND-NEW, pristine account with clean defaults
+      console.log('✨ Issuing brand-new clean OWNER account for "株式会社３６５"...');
+      const thanxOwner = await prisma.shop.create({
+        data: {
+          id: targetThanxId,
+          name: '株式会社３６５',
+          email: '365meo@gmail.com',
+          password: 'Tody-12191019',
+          role: 'OWNER',
+          agency_name: '365MEO',
+          google_location_id: 'locations/7613471938029191960',
+          google_drive_folder_id: '1AIgemm9-fvP-eLwP7p2p8Plja1mbOJtX',
+          line_user_id: process.env.LINE_USER_ID || 'U205e0595cff6e3882288962525941500',
+          reply_active: true,
+          post_active: true,
+          custom_review_prompt: '株式会社３６５のカスタマーサポートとして、極めて真摯にお詫びしてください。店舗様の売上向上に本気で伴走する企業として、サービス改善へ向けて早急に対応する熱い誠意を伝えてください。',
+        }
       });
-      const password = thanxOwner ? thanxOwner.password : 'password';
+
+      // Recreate ShopKeywords with clean pristine defaults (draft_posts will be null, so generated fresh!)
+      await prisma.shopKeywords.create({
+        data: {
+          shop_id: targetThanxId,
+          main_keywords: JSON.stringify(['名古屋 MEO', 'MEO対策', 'Googleマップ集客', 'ローカルSEO', '365MEO']),
+          sub_keywords: JSON.stringify(['口コミ対策', 'GBP運用', 'マップ順位', '集客効果', '名古屋マーケティング', '店舗集客', '自動投稿', 'SNS連動', '口コミ返信', 'AI作成']),
+          fixed_footer: '店舗名: 株式会社３６５\n住所: 名古屋市中区\nお問い合わせ: 365meo@gmail.com',
+          custom_prompt: '丁寧で自然なトーンで、MEO集客サポートの魅力を訴求してください。',
+          post_time_hour: 12,
+        }
+      });
+
+      // Recreate default templates
+      const defaultStar3 = [
+        'ご来店および貴重なご意見をいただきありがとうございます。ご指摘いただいた点を真摯に受け止め、今後のサービス向上に役立ててまいります。',
+        'この度はご来店いただきありがとうございました。至らない点があったことをお詫びするとともに、スタッフ一同、よりご満足いただけるお店づくりに努めてまいります。',
+        'ご感想をお寄せいただきありがとうございます。いただいたご意見を店舗全体で共有し、改善を重ね要領よく対応してまいります。またのご来店をお待ちしております。',
+        'ご来店ありがとうございました。お褒めいただいた点も、ご指摘いただいた点も大変参考になります。今後ともよろしくお願いいたします。',
+        'ご意見ありがとうございます。次回ご来店の際には、より良いサービスを提供できるよう、スタッフ教育や設備改善に取り組んでまいります。'
+      ];
+      const defaultStar4 = [
+        'この度はご来店いただき、また高評価をありがとうございます！ご満足いただけて大変嬉しく思います。またのお越しを心よりお待ちしております。',
+        'お忙しい中、嬉しい口コミをご投稿いただき誠にありがとうございます。これからも素敵なお時間を提供できるよう、努力を続けてまいります。',
+        'ご来店および素晴らしい評価をありがとうございます。お食事やお店の雰囲いを楽しんでいただけて何よりです。次回のご来店もお待ちしております。',
+        '大変嬉しいお声をいただき、スタッフ一同の励みになります！次回はさらにご満足いただけるよう、心を込めておもてなしいたします。',
+        'ご投稿ありがとうございます！高評価をいただき感謝申し上げます。今後とも変わらぬご愛顧 of the hood, よろしくお願い申し上げます。'
+      ];
+      const defaultStar5 = [
+        'この度は最高評価をいただき、誠にありがとうございます！本当に嬉しいお言葉を励みに、これからも最上のサービスを追求してまいります。',
+        'ご来店いただき、またお褒めの言葉をいただき大変光栄です！また次回も「来てよかった」と思っていただけるよう、全力を尽くします。',
+        '素晴らしい評価をありがとうございます！当店での時間が素敵な思い出となったのであれば幸いです。またのご来店を心よりお待ちしております！',
+        'スタッフ全員が笑顔になる最高の口コミをありがとうございます！いただいたエネルギーを糧に、次回も完璧な施術・サービスを提供します。',
+        'ご来店ありがとうございました！星5つの満点評価をいただき感謝の極みです。これからもお客様に愛され続けるお店を目指して頑張ります！'
+      ];
+      await prisma.replyTemplates.create({
+        data: {
+          shop_id: targetThanxId,
+          templates_star3: JSON.stringify(defaultStar3),
+          templates_star4: JSON.stringify(defaultStar4),
+          templates_star5: JSON.stringify(defaultStar5),
+        }
+      });
+
+      console.log('✅ Brand-new clean "合同会社THANX CREATE" account has been successfully issued!');
+
+      // Safe purge existing demo agency and demo store
+      const targetAgencyId = 'demo-agency-uuid';
+      const targetAvenirId = 'demo-store-uuid';
+
+      console.log('🧹 Purging existing Demo Agency X and Avenir Hair data...');
+      await prisma.replyTemplates.deleteMany({ where: { shop_id: targetAgencyId } });
+      await prisma.shopKeywords.deleteMany({ where: { shop_id: targetAgencyId } });
+      await prisma.reviewLogs.deleteMany({ where: { shop_id: targetAgencyId } });
+      await prisma.magicLinkToken.deleteMany({ where: { shop_id: targetAgencyId } });
+      await prisma.shop.deleteMany({ where: { id: targetAgencyId } });
+
+      await prisma.replyTemplates.deleteMany({ where: { shop_id: targetAvenirId } });
+      await prisma.shopKeywords.deleteMany({ where: { shop_id: targetAvenirId } });
+      await prisma.reviewLogs.deleteMany({ where: { shop_id: targetAvenirId } });
+      await prisma.magicLinkToken.deleteMany({ where: { shop_id: targetAvenirId } });
+      await prisma.shop.deleteMany({ where: { id: targetAvenirId } });
+
+      const agencyByEmail2 = await prisma.shop.findUnique({ where: { email: 'meoseiha@dairiten.x' } });
+      if (agencyByEmail2) {
+        await prisma.replyTemplates.deleteMany({ where: { shop_id: agencyByEmail2.id } });
+        await prisma.shopKeywords.deleteMany({ where: { shop_id: agencyByEmail2.id } });
+        await prisma.reviewLogs.deleteMany({ where: { shop_id: agencyByEmail2.id } });
+        await prisma.magicLinkToken.deleteMany({ where: { shop_id: agencyByEmail2.id } });
+        await prisma.shop.delete({ where: { id: agencyByEmail2.id } });
+      }
+
+      const avenirByEmail = await prisma.shop.findUnique({ where: { email: 'meoseiha@avenir' } });
+      if (avenirByEmail) {
+        await prisma.replyTemplates.deleteMany({ where: { shop_id: avenirByEmail.id } });
+        await prisma.shopKeywords.deleteMany({ where: { shop_id: avenirByEmail.id } });
+        await prisma.reviewLogs.deleteMany({ where: { shop_id: avenirByEmail.id } });
+        await prisma.magicLinkToken.deleteMany({ where: { shop_id: avenirByEmail.id } });
+        await prisma.shop.delete({ where: { id: avenirByEmail.id } });
+      }
+      console.log('🧹 Purge completed successfully.');
+
+      console.log('✨ Issuing brand-new clean AGENCY account for "代理店X"...');
+      await prisma.shop.create({
+        data: {
+          id: targetAgencyId,
+          name: '代理店X',
+          email: 'meoseiha@dairiten.x',
+          password: 'meoseiha@dairiten.x',
+          role: 'AGENCY',
+          agency_name: '代理店X',
+          reply_active: false,
+          post_active: true,
+        }
+      });
+
+      console.log('✨ Issuing brand-new clean OWNER account for "美髪改善サロン Avenir Hair"...');
+      await prisma.shop.create({
+        data: {
+          id: targetAvenirId,
+          name: '美髪改善サロン Avenir Hair',
+          email: 'meoseiha@avenir',
+          password: 'meoseiha@avenir',
+          role: 'OWNER',
+          agency_name: '代理店X',
+          google_location_id: 'locations/demo-loc-365',
+          google_drive_folder_id: '10c1rRfqpsdLRz_ZlOgEXJFR7BoVsRjXe',
+          line_user_id: 'U205e0595cff6e3882288962525941500',
+          reply_active: true,
+          post_active: true,
+          custom_review_prompt: '完全個室のリラックス空間と、髪を傷めない最先端の髪質改善トリートメント、そして丁寧なカウンセリング技術を上品かつ温かみのあるトーンでPRしてください。不満のお言葉には深くお詫びし、接客改善と誠実なカウンセリング教育を徹底する姿勢を示してください。',
+        }
+      });
+
+      // Create Keywords for Avenir Hair
+      await prisma.shopKeywords.create({
+        data: {
+          shop_id: targetAvenirId,
+          main_keywords: JSON.stringify(['栄 美容室', '名古屋 髪質改善', '栄 カット', '髪質改善 サロン']),
+          sub_keywords: JSON.stringify(['完全個室サロン', '縮毛矯正 栄', '白髪染め 名古屋', 'トリートメント 推奨']),
+          fixed_footer: '店舗名: 美髪改善サロン Avenir Hair (アヴニールヘア)\n住所: 愛知県名古屋市中区栄3丁目\n営業時間: 10:00〜20:00 (完全予約制)\n定休日: 毎週月曜日\nご予約・お問い合わせはお気軽にどうぞ！',
+          custom_prompt: '完全個室のリラックス空間と、髪を傷めない最先端の髪質改善トリートメント、飾りのない温かみのあるトーンでPRしてください。',
+          hp_url: 'https://avenir-hair-demo.example.com',
+          tabelog_url: '',
+          hotpepper_url: 'https://beauty.hotpepper.jp/avenir-hair-demo',
+          gurunavi_url: '',
+          gbp_action_url: 'https://beauty.hotpepper.jp/avenir-hair-demo/reserve',
+          post_time_hour: 12,
+          draft_posts: JSON.stringify([
+            {
+              dayIndex: 0,
+              title: '今日投稿予定の下書き (Day 0)',
+              text: '【髪質改善】栄駅徒歩5分の完全個室サロン Avenir Hair です。\n当サロンでは、お客様一人ひとりの髪質やクセに徹底的に向き合う「丁寧なカウンセリング技術」を大切にしています。\n\n栄で完全個室だからこそ、周りを気にせず髪のパサつきやダメージについて髪質改善トリートメントのご相談をいただけます。\n\n・オーダーメイドの極上髪質改善メニュー\n・完全個室のリラックスできるサロン空間\n・髪を傷めない最先端トリートメント技術\n\nお客様の髪本来の輝きとサロントリートメントによる感動的な艶を引き出します。\nお体のメンテナンスを兼ねて、ぜひ下記の「詳細」ボタンよりご予約情報をご確認ください。',
+              subKeywords: ['完全個室サロン', 'トリートメント 推奨'],
+              imageFileId: '1ICy4qoD6qjOr-w4vD6T3I_xEAxMY0N4B'
+            },
+            {
+              dayIndex: 1,
+              title: '明日投稿予定の下書き (Day 1)',
+              text: '【縮毛矯正】うねりやくせ毛でお悩みなら栄の「Avenir Hair」にお任せください。\n当サロンでは、髪を傷めない最先端の薬剤を使用し、髪質改善トリートメントを同時に配合した縮毛矯正をご提供しています。\n\n完全個室のリラックスした極上空間で、仕上がりは驚くほど柔らかく滑らかな艶髪を実現します。\n\n・うねりやクセを自然に抑える縮毛矯正\n・丁寧なカウンセリングでお悩み徹底解消\n・縮毛矯正と髪質改善のダブルアプローチ\n\n毎朝のスタイリングが感動するほど楽になりますよ。\n詳しくは詳細ボタンよりご予約や空き状況をご確認ください。',
+              subKeywords: ['縮毛矯正 栄', '完全個室サロン'],
+              imageFileId: '1YRczsnYk5_EpPhY3U7N2RjyyOF8629u_'
+            },
+            {
+              dayIndex: 2,
+              title: '明後日投稿予定の下書き (Day 2)',
+              text: '【白髪染め】頭皮と髪を優しく守る栄の髪質改善カラーなら「Avenir Hair」です。\n「白髪は染めたいけれど髪のパサつきやダメージが気になる」とお悩みではありませんか？\n\n当サロン独自の髪質改善トリートメントを配合した、優しく低刺激なオーガニックカラーをご提案します。\n\n・白髪染めとトリートメントの極上融合\n・完全個室でゆったり過ごせる大人の隠れ家\n・髪質に合わせたオーダーメイド施術\n\n潤いに満ちた、若々しくしっとりまとまる美しい艶髪に仕上げます。\nぜひ下記の詳細ボタンより空き状況をご確認ください。',
+              subKeywords: ['白髪染め 名古屋', 'トリートメント 推奨'],
+              imageFileId: '1iLC1rMI5az8xd8nK8tOEK9ZuszpDFHwW'
+            }
+          ])
+        }
+      });
+
+      // Create default templates for Avenir Hair
+      const avenirStar3 = [
+        'ご来店および貴重なご意見をいただきありがとうございます。ご指摘いただいた点を真摯に受け止め、今後のサービス向上に役立ててまいります。',
+        'この度はご来店いただきありがとうございました。至らない点があったことをお詫びするとともに、スタッフ一同、よりご満足いただけるお店づくりに努めてまいります。',
+        'ご感想をお寄せいただきありがとうございます。いただいたご意見を店舗全体で共有し、改善を重ね要領よく対応してまいります。またのご来店をお待ちしております。',
+        'ご来店ありがとうございました。お褒めいただいた点も、ご指摘いただいた点も大変参考になります。今後ともよろしくお願いいたします。',
+        'ご意見ありがとうございます。次回ご来店の際には、より良いサービスを提供できるよう、スタッフ教育や設備改善に取り組んでまいります。'
+      ];
+      const avenirStar4 = [
+        'この度はご来店いただき、また高評価をありがとうございます！ご満足いただけて大変嬉しく思います。またのお越しを心よりお待ちしております。',
+        'お忙しい中、嬉しい口コミをご投稿いただき誠にありがとうございます。これからも素敵なお時間を提供できるよう、努力を続けてまいります。',
+        'ご来店および素晴らしい評価をありがとうございます。お食事やお店の雰囲いを楽しんでいただけて何よりです。次回のご来店もお待ちしております。',
+        '大変嬉しいお声をいただき、スタッフ一同の励みになります！次回はさらにご満足いただけるよう、心を込めておもてなしいたします。',
+        'ご投稿ありがとうございます！高評価をいただき感謝申し上げます。今後とも変わらぬご愛顧 of the hood, よろしくお願い申し上げます。'
+      ];
+      const avenirStar5 = [
+        'この度は最高評価をいただき、誠にありがとうございます！本当に嬉しいお言葉を励みに、これからも最上のサービスを追求してまいります。',
+        'ご来店いただき、またお褒めの言葉をいただき大変光栄です！また次回も「来てよかった」と思っていただけるよう、全力を尽くします。',
+        '素晴らしい評価をありがとうございます！当店での時間が素敵な思い出となったのであれば幸いです。またのご来店を心よりお待ちしております！',
+        'スタッフ全員が笑顔になる最高の口コミをありがとうございます！いただいたエネルギーを糧に、次回も完璧な施術・サービスを提供します。',
+        'ご来店ありがとうございました！星5つの満点評価をいただき感謝の極みです。これからもお客様に愛され続けるお店を目指して頑張ります！'
+      ];
+      await prisma.replyTemplates.create({
+        data: {
+          shop_id: targetAvenirId,
+          templates_star3: JSON.stringify(avenirStar3),
+          templates_star4: JSON.stringify(avenirStar4),
+          templates_star5: JSON.stringify(avenirStar5),
+        }
+      });
+
+      // Create Review Logs for Avenir Hair
+      await prisma.reviewLogs.create({
+        data: {
+          shop_id: targetAvenirId,
+          review_id: 'review-star-5',
+          reviewer_name: '田中 瑞希',
+          star_rating: 5,
+          comment: 'カウンセリングがとても丁寧で、私の髪質に合わせたオーダーメイドの髪質改善トリートメントをしていただきました。仕上がりは驚くほどサラサラで、完全個室なので周りを気にせずリラックスできました！またお邪魔します。',
+          reply_text: '瑞希様、ご来店いただき満点評価の素晴らしい口コミをありがとうございます！当サロンの丁寧なカウンセリングとオーダーメイドの髪質改善トリートメントを実感していただけて大変光栄です。完全個室のオアシス空間で日頃のお疲れを癒していただけたようで何よりでございます。今後とも瑞希様の美しい艶髪をキープできるよう、全力を尽くしてサポートさせていただきます。次回のご来店も心よりお待ちしております！',
+          is_auto_replied: true,
+          requires_alert: false,
+          escalation_triggered: false,
+          create_time: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000)
+        }
+      });
+
+      await prisma.reviewLogs.create({
+        data: {
+          shop_id: targetAvenirId,
+          review_id: 'review-star-2',
+          reviewer_name: '渡辺 直美',
+          star_rating: 2,
+          comment: 'トリートメントの仕上がりはとても満足で髪がツヤツヤになりました。ですが、予約時間から15分ほど待たされ、その際の説明や謝罪が少し冷たくてそっけなく感じられて悲しかったです。お店の雰囲気が素敵なだけに、接客がもう少し温かいと嬉しいです。',
+          reply_text: '直美様、この度はご来店いただき、トリートメントの仕上がりにご満足いただけたにもかかわらず、ご案内まで15分ほどお待たせし、スタッフの対応において冷たく不快な思いをさせてしまいましたことを深くお詫び申し上げます。完全個室で癒やしをご提供するサロンとして、お客様への温かいおもてなしを忘れたご対応となり猛省しております。いただいたご指摘をスタッフ全員で共有し、接客と丁寧なカウンセリングの教育を徹底して改善に努めてまいります。貴重なご意見をありがとうございました。',
+          is_auto_replied: false,
+          requires_alert: true,
+          escalation_triggered: false,
+          create_time: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000)
+        }
+      });
+
+      await prisma.reviewLogs.create({
+        data: {
+          shop_id: targetAvenirId,
+          review_id: 'review-star-4',
+          reviewer_name: '鈴木 健太',
+          star_rating: 4,
+          comment: 'メンズカットとスカルプケアで利用しました。美容室は少し緊張するのですが、完全個室なので男性でも周りを気にせずリラックスできました。スタイリングの仕方も丁寧に教えてもらえたので大満足です。栄駅から近いのもいいですね。',
+          reply_text: '健太様、この度はご来店いただき高評価をありがとうございます！当サロンは完全個室のプライベート空間ですので、男性のお客様も緊張せずリラックスして施術を受けていただけて大変嬉しく思います。スタイリングについてもお役に立てたようで幸いです。また何か気になる点やヘアスタイルのご要望がございましたら、お気軽にカウンセリングにてご相談くださいね。健太様のまたのご来店を心よりお待ちしております！',
+          is_auto_replied: true,
+          requires_alert: false,
+          escalation_triggered: false,
+          create_time: new Date(Date.now() - 4 * 24 * 60 * 60 * 1000)
+        }
+      });
+
+      await prisma.reviewLogs.create({
+        data: {
+          shop_id: targetAvenirId,
+          review_id: 'review-star-1',
+          reviewer_name: '佐藤 優一',
+          star_rating: 1,
+          comment: '記念日の前なので奮発して指名で予約して行きましたが、ダブルブッキングしていたのか別のスタッフがメインで担当され、指名料を払っているのに説明も謝罪もありませんでした。非常に不快で残念な記念日になりました。二度と行きません。',
+          reply_text: '優一様、この度は大切な記念日の前に当サロンをご予約いただき、楽しみにお越しいただいたにもかかわらず、当店の予約連携不足により別のスタッフがメインで対応し、かつ指名料に対する十分なご説明や真摯な謝罪を怠るという不手際がありましたことを心より深くお詫び申し上げます。せっかくの記念日の前のお気持ちを台無しにしてしまいましたことを猛省しております。指名管理体制の厳重な見直しと、接客教育の徹底を図り再発防止に努めてまいります。貴重なご指摘をありがとうございました。',
+          is_auto_replied: false,
+          requires_alert: true,
+          escalation_triggered: true,
+          create_time: new Date(Date.now() - 12 * 60 * 60 * 1000)
+        }
+      });
+
+      console.log('✅ Agency X and Avenir Hair demo data have been successfully seeded!');
+
+      // Safe purge existing ラフ＆ミートラウンジ晴れテル。
+      const targetHareteruId = 'hareteru-lounge-uuid';
+      console.log('🧹 Purging existing ラフ＆ミートラウンジ晴れテル。 data...');
+      await prisma.replyTemplates.deleteMany({ where: { shop_id: targetHareteruId } });
+      await prisma.shopKeywords.deleteMany({ where: { shop_id: targetHareteruId } });
+      await prisma.reviewLogs.deleteMany({ where: { shop_id: targetHareteruId } });
+      await prisma.magicLinkToken.deleteMany({ where: { shop_id: targetHareteruId } });
+      await prisma.shop.deleteMany({ where: { id: targetHareteruId } });
+
+      const hareteruByEmail = await prisma.shop.findUnique({ where: { email: 'moiccho@gmail.com' } });
+      if (hareteruByEmail) {
+        await prisma.replyTemplates.deleteMany({ where: { shop_id: hareteruByEmail.id } });
+        await prisma.shopKeywords.deleteMany({ where: { shop_id: hareteruByEmail.id } });
+        await prisma.reviewLogs.deleteMany({ where: { shop_id: hareteruByEmail.id } });
+        await prisma.magicLinkToken.deleteMany({ where: { shop_id: hareteruByEmail.id } });
+        await prisma.shop.delete({ where: { id: hareteruByEmail.id } });
+      }
+      console.log('🧹 Purge completed successfully.');
+
+      console.log('✨ Issuing brand-new clean OWNER account for "ラフ＆ミートラウンジ晴れテル。"...');
+      await prisma.shop.create({
+        data: {
+          id: targetHareteruId,
+          name: 'ラフ＆ミートラウンジ晴れテル。',
+          email: 'moiccho@gmail.com',
+          password: 'Hareteru-Meat-8080',
+          role: 'OWNER',
+          agency_name: 'THANXCREATE',
+          google_location_id: 'locations/10645469356950848476',
+          google_drive_folder_id: '1YAGUDKqOy1UBta7XGpbO_s3A7vqr3DeB',
+          line_user_id: null,
+          reply_active: false,
+          post_active: false,
+          custom_review_prompt: '「ラフ＆ミートラウンジ晴れテル。」の魅力（美味しい極上肉料理、心地よいラウンジ空間、アットホームで楽しい雰囲気）を明るく魅力的にアピールしてください。不満のお言葉には真摯にお詫びし、迅速にサービスや運営の改善へ取り組む誠意を伝えてください。',
+          created_at: new Date('2026-09-01T00:00:00+09:00'), // Treated as Sept 1, 2026!
+        }
+      });
+
+      // Keywords with gbp_action_url
+      await prisma.shopKeywords.create({
+        data: {
+          shop_id: targetHareteruId,
+          main_keywords: JSON.stringify(['名古屋 肉バル', '肉ラウンジ 晴れテル', '名古屋 グルメ', 'ミートラウンジ', '晴れテル']),
+          sub_keywords: JSON.stringify(['美味しいお肉', '個室ダイニング', '名古屋ステーキ', '宴会バル', 'おしゃれ居酒屋', '女子会バル', '肉料理おすすめ']),
+          fixed_footer: '店舗名: ラフ＆ミートラウンジ晴れテル。\n住所: 愛知県名古屋市中区\nご予約・お問い合わせはお気軽にどうぞ！',
+          custom_prompt: '「ラフ＆ミートラウンジ晴れテル。」の魅力（美味しい極上肉料理、心地よいラウンジ空間、アットホームで楽しい雰囲気）を明るく魅力的にアピールしてください。',
+          hp_url: 'https://maps.app.goo.gl/BMGhuf16cvVUkQAF9',
+          tabelog_url: '',
+          hotpepper_url: '',
+          gurunavi_url: '',
+          gbp_action_url: 'https://maps.app.goo.gl/BMGhuf16cvVUkQAF9',
+          post_time_hour: 12,
+        }
+      });
+
+      // Default templates
+      await prisma.replyTemplates.create({
+        data: {
+          shop_id: targetHareteruId,
+          templates_star3: JSON.stringify(defaultStar3),
+          templates_star4: JSON.stringify(defaultStar4),
+          templates_star5: JSON.stringify(defaultStar5),
+        },
+      });
+
+      console.log('✅ ラフ＆ミートラウンジ晴れテル。 demo data have been successfully seeded!');
+
+      // Load secure master admin password from environment variable with a safe dynamic fallback
+      const password = process.env.MASTER_ADMIN_PASSWORD || 'password';
 
       const masterAccount = await prisma.shop.upsert({
         where: { email: '365meo.gbp@gmail.com' },
         update: {
           password: password,
           role: 'ADMIN',
+          post_active: false,
+          google_drive_folder_id: '1AIgemm9-fvP-eLwP7p2p8Plja1mbOJtX',
+          google_location_id: 'locations/7613471938029191960',
         },
         create: {
           name: '365MEO運営本部',
           email: '365meo.gbp@gmail.com',
           password: password,
           role: 'ADMIN',
-          google_drive_folder_id: thanxOwner ? thanxOwner.google_drive_folder_id : null,
-          google_location_id: thanxOwner ? thanxOwner.google_location_id : null,
+          post_active: false,
+          google_drive_folder_id: '1AIgemm9-fvP-eLwP7p2p8Plja1mbOJtX',
+          google_location_id: 'locations/7613471938029191960',
         }
       });
       console.log(`✅ Master Account configured successfully! (Email: ${masterAccount.email}, Role: ${masterAccount.role})`);
 
-      // Sync existing 365MEO to direct agency
-      await prisma.shop.updateMany({
-        where: { id: '365meo-shop-uuid' },
-        data: { agency_name: '365MEO' }
-      });
+      // Cascade delete Agency X (osada@jira-chi.net) test account from both code and live database
+      console.log('🧹 Running cleanups for deleted Agency accounts...');
+      const agencyXEmail = 'osada@jira-chi.net';
+      const agencyByEmail = await prisma.shop.findUnique({ where: { email: agencyXEmail } });
+      if (agencyByEmail) {
+        await prisma.replyTemplates.deleteMany({ where: { shop_id: agencyByEmail.id } });
+        await prisma.shopKeywords.deleteMany({ where: { shop_id: agencyByEmail.id } });
+        await prisma.reviewLogs.deleteMany({ where: { shop_id: agencyByEmail.id } });
+        await prisma.magicLinkToken.deleteMany({ where: { shop_id: agencyByEmail.id } });
+        await prisma.shop.delete({ where: { id: agencyByEmail.id } });
+        console.log(`🧹 Cleaned up ${agencyXEmail} agency account successfully.`);
+      }
 
-      // Initialize Mock Shop A (代理店A)
-      const shopA = await prisma.shop.upsert({
-        where: { email: 'salon.sakae@example.com' },
-        update: {
-          agency_name: '代理店A'
-        },
-        create: {
-          id: 'mock-shop-a-uuid',
-          name: 'テストヘアサロン 栄店',
-          email: 'salon.sakae@example.com',
-          password: 'password',
-          role: 'OWNER',
-          agency_name: '代理店A',
-          google_location_id: null,
-          google_drive_folder_id: null,
-          reply_active: true,
-        }
-      });
-      await prisma.shopKeywords.upsert({
-        where: { shop_id: shopA.id },
-        update: {},
-        create: {
-          shop_id: shopA.id,
-          main_keywords: JSON.stringify(['栄 美容室', 'カット', 'カラー']),
-          sub_keywords: JSON.stringify(['トリートメント', 'ヘッドスパ']),
-          fixed_footer: '店舗名: テストヘアサロン 栄店\n住所: 名古屋市中区栄3丁目',
-          custom_prompt: 'アットホームな雰囲気をアピールしてください。',
-        }
-      });
-
-      // Initialize Mock Shop B (代理店B)
-      const shopB = await prisma.shop.upsert({
-        where: { email: 'izakaya.nishiki@example.com' },
-        update: {
-          agency_name: '代理店B'
-        },
-        create: {
-          id: 'mock-shop-b-uuid',
-          name: 'テスト居酒屋 錦店',
-          email: 'izakaya.nishiki@example.com',
-          password: 'password',
-          role: 'OWNER',
-          agency_name: '代理店B',
-          google_location_id: null,
-          google_drive_folder_id: null,
-          reply_active: true,
-        }
-      });
-      await prisma.shopKeywords.upsert({
-        where: { shop_id: shopB.id },
-        update: {},
-        create: {
-          shop_id: shopB.id,
-          main_keywords: JSON.stringify(['錦 居酒屋', '焼き鳥', '個室']),
-          sub_keywords: JSON.stringify(['飲み放題', '接待']),
-          fixed_footer: '店舗名: テスト居酒屋 錦店\n住所: 名古屋市中区錦3丁目',
-          custom_prompt: '賑やかで活気のある雰囲気をアピールしてください。',
-        }
-      });
-      console.log('🏬 Mock testing shops (代理店A, 代理店B) initialized successfully!');
+      // Cascade delete おちあい・接骨院 test account and all its related records if they exist to keep production database clean
+      console.log('🧹 Running cleanups for deleted test accounts...');
+      const targetOchiaiId = 'ochiai-sekkotsuin-uuid';
+      const deletedTemplates = await prisma.replyTemplates.deleteMany({ where: { shop_id: targetOchiaiId } });
+      const deletedKeywords = await prisma.shopKeywords.deleteMany({ where: { shop_id: targetOchiaiId } });
+      const deletedReviewLogs = await prisma.reviewLogs.deleteMany({ where: { shop_id: targetOchiaiId } });
+      const deletedMagicTokens = await prisma.magicLinkToken.deleteMany({ where: { shop_id: targetOchiaiId } });
+      const deletedShop = await prisma.shop.deleteMany({ where: { id: targetOchiaiId } });
+      
+      // Also delete any shop with email example@ochiai.com just in case it had a different ID
+      const ochiaiByEmail = await prisma.shop.findUnique({ where: { email: 'example@ochiai.com' } });
+      if (ochiaiByEmail) {
+        await prisma.replyTemplates.deleteMany({ where: { shop_id: ochiaiByEmail.id } });
+        await prisma.shopKeywords.deleteMany({ where: { shop_id: ochiaiByEmail.id } });
+        await prisma.reviewLogs.deleteMany({ where: { shop_id: ochiaiByEmail.id } });
+        await prisma.magicLinkToken.deleteMany({ where: { shop_id: ochiaiByEmail.id } });
+        await prisma.shop.delete({ where: { id: ochiaiByEmail.id } });
+      }
+      console.log('🧹 Cleaned up おちあい・接骨院 test account data successfully.');
     } catch (dbErr: any) {
       console.error('❌ Failed to initialize Master Account:', dbErr.message || dbErr);
     }

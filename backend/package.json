@@ -7,7 +7,7 @@
     "dev": "nodemon --watch src --ext ts --exec tsx src/index.ts",
     "build": "npx prisma generate && tsc",
     "start": "npx prisma db push && npx tsx prisma/update_365meo_settings.ts && node dist/index.js",
-    "test:gemini": "tsx src/tests/test-gemini.ts",
+    "test:claude": "tsx src/tests/test-claude.ts",
     "test:line": "tsx src/tests/test-line.ts",
     "test:google": "tsx src/tests/test-google.ts",
     "test:google-manual": "tsx src/tests/test-google-manual.ts",
@@ -18,7 +18,7 @@
     "test:optimization": "tsx src/tests/test-post-optimization.ts"
   },
   "dependencies": {
-    "@google/generative-ai": "^0.11.3",
+    "@anthropic-ai/sdk": "^0.121.0",
     "@line/bot-sdk": "^7.5.2",
     "@prisma/client": "^5.22.0",
     "cors": "^2.8.5",

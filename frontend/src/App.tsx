@@ -17,7 +17,8 @@ import {
   Send,
   Check,
   Clock,
-  ArrowLeft
+  ArrowLeft,
+  BookOpen
 } from 'lucide-react';
 
 const metaEnv = (import.meta as any).env;
@@ -37,6 +38,7 @@ interface ShopProfile {
   google_drive_folder_id: string | null;
   line_user_id: string | null;
   reply_active: boolean;
+  post_active?: boolean;
   custom_review_prompt: string | null;
 }
 
@@ -51,6 +53,7 @@ interface DraftPost {
 interface DashboardData {
   shopName: string;
   replyActive: boolean;
+  postActive: boolean;
   imageCount: number;
   postingMode: string;
   postingModeLabel: string;
@@ -83,12 +86,14 @@ interface ReviewLog {
   requires_alert: boolean;
   escalation_triggered: boolean;
   create_time: string;
+  is_pre_integration?: boolean;
 }
 
 interface SettingsData {
   shopId: string;
   shopName: string;
   replyActive: boolean;
+  postActive: boolean;
   customReviewPrompt: string;
   lineUserId: string;
   keywords: {
@@ -114,8 +119,8 @@ export default function App() {
   const [isPageLoading, setIsPageLoading] = useState<boolean>(true);
 
   // Authentication Form
-  const [email, setEmail] = useState<string>('365meo@gmail.com'); // Default value for testing
-  const [password, setPassword] = useState<string>('password');
+  const [email, setEmail] = useState<string>('');
+  const [password, setPassword] = useState<string>('');
   const [rememberMe, setRememberMe] = useState<boolean>(true);
   const [authError, setAuthError] = useState<string | null>(null);
 
@@ -142,6 +147,7 @@ export default function App() {
 
   // Master Account States
   const [shopsList, setShopsList] = useState<ShopProfile[]>([]);
+  const [agenciesList, setAgenciesList] = useState<ShopProfile[]>([]);
   const [isViewingShop, setIsViewingShop] = useState<boolean>(false);
   const [shopSearchQuery, setShopSearchQuery] = useState<string>('');
   const [expandedAgencies, setExpandedAgencies] = useState<{ [key: string]: boolean }>({
@@ -166,9 +172,9 @@ export default function App() {
     }
   }, []);
 
-  // Fetch shops list for master/admin accounts
+  // Fetch shops list for master/admin/agency accounts
   useEffect(() => {
-    if (userRole === 'ADMIN' && token) {
+    if ((userRole === 'ADMIN' || userRole === 'AGENCY') && token) {
       const fetchShops = async () => {
         try {
           const res = await fetch(`${API_BASE}/shops`, {
@@ -176,7 +182,8 @@ export default function App() {
           });
           if (res.ok) {
             const data = await res.json();
-            setShopsList(data.shops);
+            setShopsList(data.shops || []);
+            setAgenciesList(data.agencies || []);
           }
         } catch (err) {
           console.error('Failed to fetch shops list:', err);
@@ -202,7 +209,9 @@ export default function App() {
         if (res.ok) {
           const data = await res.json();
           setCurrentShop(data.shop);
-          setIsViewingShop(data.shop.role !== 'ADMIN');
+          setUserRole(data.shop.role);
+          localStorage.setItem('userRole', data.shop.role);
+          setIsViewingShop(data.shop.role !== 'ADMIN' && data.shop.role !== 'AGENCY');
           if (data.newToken) {
             console.log('🔄 Magic token successfully exchanged for standard session token.');
             localStorage.setItem('token', data.newToken);
@@ -226,6 +235,12 @@ export default function App() {
   // Load active tab data when shop or tab changes
   useEffect(() => {
     if (!currentShop) return;
+
+    // Clear previous shop data to prevent old data ghosting/badges during loading
+    setDashboard(null);
+    setSettings(null);
+    setPhotos([]);
+    setReviews([]);
 
     const fetchTabData = async () => {
       setIsLoading(true);
@@ -301,7 +316,7 @@ export default function App() {
         setUserRole(data.shop.role);
         setCurrentShop(data.shop);
         setActiveTab('dashboard');
-        setIsViewingShop(data.shop.role !== 'ADMIN');
+        setIsViewingShop(data.shop.role !== 'ADMIN' && data.shop.role !== 'AGENCY');
       } else {
         setAuthError(data.error || 'ログインに失敗しました。');
       }
@@ -900,46 +915,6 @@ export default function App() {
               </div>
             </form>
 
-            <div className="border-t border-slate-100 pt-6 space-y-3">
-              <span className="block text-center text-xs font-bold text-stripeInk-mute uppercase tracking-widest">
-                💡 テスト用ログインアカウント
-              </span>
-              <div className="grid grid-cols-1 gap-2.5">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setEmail('admin@365meo.com');
-                    setPassword('password');
-                  }}
-                  className="w-full bg-slate-50 hover:bg-stripeIndigo-50 border border-slate-200 hover:border-stripeIndigo-200 text-stripeInk-secondary font-bold text-xs py-2.5 px-3 rounded-xl transition-all flex items-center justify-between group"
-                >
-                  <span>365MEO運営本部 (管理者)</span>
-                  <span className="text-[10px] bg-purple-100 text-purple-700 px-2.5 py-0.5 rounded-full font-bold">ADMIN</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setEmail('365meo.gbp@gmail.com');
-                    setPassword('password');
-                  }}
-                  className="w-full bg-slate-50 hover:bg-stripeIndigo-50 border border-slate-200 hover:border-stripeIndigo-200 text-stripeInk-secondary font-bold text-xs py-2.5 px-3 rounded-xl transition-all flex items-center justify-between group"
-                >
-                  <span>株式会社３６５ (マスター)</span>
-                  <span className="text-[10px] bg-indigo-600 text-white px-2.5 py-0.5 rounded-full font-bold">MASTER</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setEmail('365meo@gmail.com');
-                    setPassword('password');
-                  }}
-                  className="w-full bg-slate-50 hover:bg-stripeIndigo-50 border border-slate-200 hover:border-stripeIndigo-200 text-stripeInk-secondary font-bold text-xs py-2.5 px-3 rounded-xl transition-all flex items-center justify-between"
-                >
-                  <span>株式会社３６５ (店舗オーナー)</span>
-                  <span className="text-[10px] bg-indigo-100 text-indigo-700 px-2.5 py-0.5 rounded-full font-bold">OWNER</span>
-                </button>
-              </div>
-            </div>
           </div>
         </div>
       </div>
@@ -947,11 +922,25 @@ export default function App() {
   }
 
   // ==========================================
-  // 👑 Master Account Contracted Shops List Screen (ADMIN)
+  // 👑 Master / Agency Account Contracted Shops List Screen (ADMIN / AGENCY)
   // ==========================================
-  if (token && currentShop && userRole === 'ADMIN' && !isViewingShop) {
+  if (token && currentShop && (userRole === 'ADMIN' || userRole === 'AGENCY') && !isViewingShop) {
     // Group shopsList by agency name
     const groupedShops: { [agency: string]: ShopProfile[] } = {};
+
+    // For ADMIN role, pre-populate all existing agencies so they appear even if they have 0 shops
+    if (userRole === 'ADMIN') {
+      agenciesList.forEach((agency) => {
+        const agencyName = agency.name || '不明な代理店';
+        // Only include if empty or matches search query (or if searching for shops, we still keep empty agencies)
+        if (!shopSearchQuery || agencyName.toLowerCase().includes(shopSearchQuery.toLowerCase())) {
+          if (!groupedShops[agencyName]) {
+            groupedShops[agencyName] = [];
+          }
+        }
+      });
+    }
+
     const filteredShops = shopsList.filter(shop =>
       shop.name.toLowerCase().includes(shopSearchQuery.toLowerCase()) ||
       shop.email.toLowerCase().includes(shopSearchQuery.toLowerCase()) ||
@@ -984,13 +973,19 @@ export default function App() {
             <div className="flex items-center gap-3">
               <img src="/logo_365.png" alt="365MEO" className="h-9 w-auto object-contain" />
               <div className="border-l border-slate-200 pl-3">
-                <p className="text-[9px] font-black text-slate-400 uppercase tracking-wider leading-none">365MEO マスターコントロール</p>
-                <h1 className="text-sm font-black text-slate-900 leading-none mt-1.5">契約店舗・代理店一覧</h1>
+                <p className="text-[9px] font-black text-slate-400 uppercase tracking-wider leading-none">
+                  {userRole === 'ADMIN' ? '365MEO マスターコントロール' : '365MEO 代理店コントロール'}
+                </p>
+                <h1 className="text-sm font-black text-slate-900 leading-none mt-1.5">
+                  {userRole === 'ADMIN' ? '契約店舗・代理店一覧' : '管理顧客店舗一覧'}
+                </h1>
               </div>
             </div>
             <div className="flex items-center gap-3">
               <div className="text-right hidden sm:block">
-                <p className="text-xs font-black text-slate-800 leading-none">👑 {currentShop.name}</p>
+                <p className="text-xs font-black text-slate-800 leading-none">
+                  {userRole === 'ADMIN' ? `👑 ${currentShop.name}` : `🏢 ${currentShop.name}`}
+                </p>
                 <p className="text-[9px] text-slate-400 font-bold mt-1 truncate max-w-[150px]">{currentShop.email}</p>
               </div>
               <button
@@ -1065,31 +1060,42 @@ export default function App() {
                     {/* Expandable Shops List */}
                     {isExpanded && (
                       <div className="border-t border-slate-100 divide-y divide-slate-100 bg-white">
-                        {shops.map((shop) => (
-                          <div key={shop.id} className="p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3.5 hover:bg-slate-50/50 transition-colors">
-                            <div className="space-y-1">
-                              <h3 className="text-xs font-black text-slate-900">{shop.name}</h3>
-                              <p className="text-[10px] text-slate-400 font-bold">{shop.email}</p>
-                            </div>
-                            <div className="flex items-center gap-3 self-end sm:self-auto">
-                              <span className={`text-[9px] font-black uppercase px-2 py-0.5 rounded-full ${
-                                shop.reply_active ? 'bg-emerald-50 text-emerald-700 border border-emerald-100' : 'bg-slate-100 text-slate-500 border border-slate-200'
-                              }`}>
-                                {shop.reply_active ? '自動返信: 作動中' : '自動返信: 停止中'}
-                              </span>
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  setCurrentShop(shop);
-                                  setIsViewingShop(true);
-                                }}
-                                className="bg-indigo-600 hover:bg-indigo-700 text-white font-extrabold text-[10px] py-1.5 px-3.5 rounded-xl shadow-sm transition-all active:scale-[0.97]"
-                              >
-                                管理画面にアクセス ➔
-                              </button>
-                            </div>
+                        {shops.length === 0 ? (
+                          <div className="p-5 text-center text-slate-400 font-bold text-xs bg-slate-50/20">
+                            📭 契約・導入店舗はありません（店舗なし）
                           </div>
-                        ))}
+                        ) : (
+                          shops.map((shop) => (
+                            <div key={shop.id} className="p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3.5 hover:bg-slate-50/50 transition-colors">
+                              <div className="space-y-1">
+                                <h3 className="text-xs font-black text-slate-900">{shop.name}</h3>
+                                <p className="text-[10px] text-slate-400 font-bold">{shop.email}</p>
+                              </div>
+                              <div className="flex items-center gap-3 self-end sm:self-auto">
+                                <span className={`text-[9px] font-black uppercase px-2 py-0.5 rounded-full ${
+                                  shop.post_active ? 'bg-indigo-50 text-indigo-700 border border-indigo-100' : 'bg-slate-100 text-slate-500 border border-slate-200'
+                                }`}>
+                                  {shop.post_active ? '毎日投稿: 作動中' : '毎日投稿: 停止中'}
+                                </span>
+                                <span className={`text-[9px] font-black uppercase px-2 py-0.5 rounded-full ${
+                                  shop.reply_active ? 'bg-emerald-50 text-emerald-700 border border-emerald-100' : 'bg-slate-100 text-slate-500 border border-slate-200'
+                                }`}>
+                                  {shop.reply_active ? '自動返信: 作動中' : '自動返信: 停止中'}
+                                </span>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setCurrentShop(shop);
+                                    setIsViewingShop(true);
+                                  }}
+                                  className="bg-indigo-600 hover:bg-indigo-700 text-white font-extrabold text-[10px] py-1.5 px-3.5 rounded-xl shadow-sm transition-all active:scale-[0.97]"
+                                >
+                                  管理画面にアクセス ➔
+                                </button>
+                              </div>
+                            </div>
+                          ))
+                        )}
                       </div>
                     )}
                   </div>
@@ -1116,9 +1122,17 @@ export default function App() {
           <div className="hidden md:block text-right">
             <p className="text-xs font-black text-slate-900 leading-tight">{currentShop.name}</p>
             <p className="text-[10px] text-slate-500 font-bold">
-              {userRole === 'ADMIN' ? '👑 マスター管理者' : '店舗オーナー'}
+              {userRole === 'ADMIN' ? '👑 マスター管理者' : (userRole === 'AGENCY' ? '🏢 代理店管理者' : '店舗オーナー')}
             </p>
           </div>
+          <button
+            disabled
+            className="px-3 py-1.5 bg-slate-50 border border-slate-200/60 text-slate-400 rounded-xl flex items-center gap-1.5 text-xs font-black cursor-not-allowed opacity-60"
+            title="操作マニュアル（現在準備中）"
+          >
+            <BookOpen className="w-4 h-4 text-slate-400" />
+            <span className="hidden md:inline">操作マニュアル</span>
+          </button>
           <button
             onClick={handleLogout}
             className="p-2 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-xl transition-all"
@@ -1149,8 +1163,8 @@ export default function App() {
       <div className="flex-1 flex flex-col sm:pl-60">
         {/* 🚀 Active Screen Container */}
         <main className="flex-1 max-w-md lg:max-w-6xl w-full mx-auto px-4 py-5 space-y-5">
-          {/* Master Account Shop back button (Mobile) */}
-          {userRole === 'ADMIN' && isViewingShop && (
+          {/* Master / Agency Account Shop back button (Mobile) */}
+          {(userRole === 'ADMIN' || userRole === 'AGENCY') && isViewingShop && (
             <button
               onClick={() => {
                 setIsViewingShop(false);
@@ -1162,15 +1176,15 @@ export default function App() {
               className="bg-indigo-50 border border-indigo-100 rounded-2xl p-3.5 text-xs font-black text-indigo-700 flex items-center justify-center gap-1.5 shadow-sm sm:hidden w-full no-print"
             >
               <ArrowLeft className="w-4.5 h-4.5" />
-              契約店舗一覧に戻る (管理者)
+              店舗一覧に戻る
             </button>
           )}
 
-          {/* Master Account Shop Switcher (Mobile) */}
-          {userRole === 'ADMIN' && shopsList.length > 0 && (
+          {/* Master / Agency Account Shop Switcher (Mobile) */}
+          {(userRole === 'ADMIN' || userRole === 'AGENCY') && shopsList.length > 0 && (
             <div className="bg-indigo-50 border border-indigo-100 rounded-2xl p-3.5 space-y-2 shadow-sm sm:hidden no-print">
               <label className="block text-[10px] font-black text-indigo-500 uppercase tracking-widest leading-none">
-                👑 マスター店舗切替 (ADMIN)
+                {userRole === 'ADMIN' ? '👑 マスター店舗切替 (ADMIN)' : '🏢 代理店店舗切替 (AGENCY)'}
               </label>
               <div className="relative mt-1">
                 <select
@@ -1283,7 +1297,7 @@ export default function App() {
                   <div className="flex items-start justify-between gap-4 text-xs font-bold border-t border-slate-50 pt-3">
                     <span className="text-slate-400 uppercase">画像ストック状況</span>
                     <span className={`font-black text-right ${dashboard.imageCount > 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
-                      {dashboard.imageCount > 0 ? `${dashboard.imageCount}枚（画像自動連携中）` : '0枚（テキストのみ投稿）'}
+                      {dashboard.imageCount > 0 ? (dashboard.imageCount >= 1000 ? '1000枚（これ以上読み込めません）' : `${dashboard.imageCount}枚（画像自動連携中）`) : '0枚（テキストのみ投稿）'}
                     </span>
                   </div>
                 </div>
@@ -1322,6 +1336,49 @@ export default function App() {
                       <span
                         className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
                           dashboard.replyActive ? 'translate-x-5' : 'translate-x-0'
+                        }`}
+                      />
+                    </div>
+                    <span className="text-[8px] font-bold text-slate-400 whitespace-nowrap">
+                      ※設定タブで変更可能
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {/* CARD 3: Toggle Switch Card (Read-Only) for Auto-Post */}
+              <div className="bg-white border border-slate-200/80 rounded-2xl p-5 shadow-sm space-y-4">
+                <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+                  <span className="text-xs font-black text-slate-800 tracking-wider flex items-center gap-1.5 uppercase">
+                    <span className="w-2.5 h-2.5 rounded-full bg-emerald-500"></span>
+                    自動投稿ステータス
+                  </span>
+                  <span className={`text-[10px] font-black px-2 py-0.5 rounded-full ${
+                    dashboard.postActive ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-500'
+                  }`}>
+                    {dashboard.postActive ? '作動中' : '停止中'}
+                  </span>
+                </div>
+
+                <div className="flex items-center justify-between py-2">
+                  <div>
+                    <h3 className="text-sm font-extrabold text-slate-900">最新情報の自動投稿機能</h3>
+                    <p className="text-[10px] text-slate-400 font-bold leading-relaxed mt-0.5">
+                      ONの場合、毎日設定された時間に、Google Drive内のストック画像とAIが生成したおしらせ文章を自動で公開します。<br />
+                      OFFの場合、自動投稿処理は一時停止されます。
+                    </p>
+                  </div>
+
+                  {/* Read-Only Status Toggle (Changeable via Settings Tab) */}
+                  <div className="flex flex-col items-end gap-1">
+                    <div
+                      className={`relative inline-flex h-6 w-11 shrink-0 cursor-default rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out ${
+                        dashboard.postActive ? 'bg-emerald-500' : 'bg-slate-300'
+                      }`}
+                    >
+                      <span
+                        className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+                          dashboard.postActive ? 'translate-x-5' : 'translate-x-0'
                         }`}
                       />
                     </div>
@@ -1560,7 +1617,7 @@ export default function App() {
                   </div>
 
                   {/* 🚨 TEST BUTTON FOR ROLL-OVER */}
-                  {dashboard.draftPosts && dashboard.draftPosts.length > 0 && (
+                  {userRole === 'ADMIN' && dashboard.draftPosts && dashboard.draftPosts.length > 0 && (
                     <div className="bg-slate-50 border border-slate-200/80 rounded-xl p-4 space-y-2 mt-2">
                       <div className="flex items-center justify-between">
                         <div className="flex items-center gap-1.5">
@@ -1655,7 +1712,7 @@ export default function App() {
             {/* Photos Grid */}
             <div className="space-y-2.5">
               <span className="text-xs font-black text-slate-400 block uppercase tracking-wider">
-                現在のストック写真一覧 ({photos.length}枚)
+                現在のストック写真一覧 ({photos.length >= 1000 ? '1000枚 - これ以上読み込めません' : `${photos.length}枚`})
               </span>
 
               {isLoading ? (
@@ -1744,6 +1801,46 @@ export default function App() {
                   <span
                     className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
                       settings.replyActive ? 'translate-x-5' : 'translate-x-0'
+                    }`}
+                  />
+                </button>
+              </div>
+            </div>
+
+            {/* CARD: Toggle Switch Card for Auto-post inside Settings */}
+            <div className="bg-white border border-slate-200/80 rounded-2xl p-5 shadow-sm space-y-4">
+              <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+                <span className="text-xs font-black text-slate-800 tracking-wider flex items-center gap-1.5 uppercase">
+                  <span className={`w-2.5 h-2.5 rounded-full ${settings.postActive ? 'bg-emerald-500' : 'bg-slate-300'}`}></span>
+                  自動投稿ステータス
+                </span>
+                <span className={`text-[10px] font-black px-2 py-0.5 rounded-full ${
+                  settings.postActive ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-500'
+                }`}>
+                  {settings.postActive ? '作動中' : '停止中'}
+                </span>
+              </div>
+
+              <div className="flex items-center justify-between py-1">
+                <div>
+                  <h3 className="text-sm font-extrabold text-slate-900">最新情報の自動投稿機能</h3>
+                  <p className="text-[10px] text-slate-400 font-bold leading-relaxed mt-0.5">
+                    ONの場合、毎日設定された時間に、Google Drive内のストック画像とAIが生成したおしらせ文章を自動で公開します。<br />
+                    OFFの場合、自動投稿処理は一時停止されます。
+                  </p>
+                </div>
+
+                {/* Smooth Animated Toggle */}
+                <button
+                  type="button"
+                  onClick={() => setSettings({ ...settings, postActive: !settings.postActive })}
+                  className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                    settings.postActive ? 'bg-emerald-500' : 'bg-slate-300'
+                  }`}
+                >
+                  <span
+                    className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+                      settings.postActive ? 'translate-x-5' : 'translate-x-0'
                     }`}
                   />
                 </button>
@@ -2287,27 +2384,39 @@ export default function App() {
                         <div className="flex items-center gap-2">
                           <span className={`text-[9px] font-black uppercase px-2 py-0.5 rounded-full ${
                             isPendingReply
-                              ? (review.star_rating <= 2
-                                ? 'bg-rose-100 text-rose-700 border border-rose-200 animate-pulse'
-                                : (dashboard?.replyActive
-                                  ? 'bg-amber-100 text-amber-700 border border-amber-200 animate-pulse'
-                                  : 'bg-indigo-100 text-indigo-700 border border-indigo-200 animate-pulse'
+                              ? (review.is_pre_integration
+                                ? 'bg-slate-100 text-slate-700 border border-slate-300 animate-pulse'
+                                : (review.star_rating <= 2
+                                  ? 'bg-rose-100 text-rose-700 border border-rose-200 animate-pulse'
+                                  : (dashboard?.replyActive
+                                    ? 'bg-amber-100 text-amber-700 border border-amber-200 animate-pulse'
+                                    : 'bg-indigo-100 text-indigo-700 border border-indigo-200 animate-pulse'
+                                  )
                                 )
                               )
-                              : (review.star_rating >= 3
-                                ? 'bg-indigo-50 text-indigo-700 border border-indigo-100'
-                                : 'bg-emerald-50 text-emerald-700 border border-emerald-100'
+                              : (review.is_pre_integration
+                                ? 'bg-slate-100 text-slate-500 border border-slate-200'
+                                : (review.star_rating >= 3
+                                  ? 'bg-indigo-50 text-indigo-700 border border-indigo-100'
+                                  : 'bg-emerald-50 text-emerald-700 border border-emerald-100'
+                                )
                               )
                           }`}>
                             {isPendingReply
-                              ? (review.star_rating <= 2
-                                ? '承認待ち (保留中)'
-                                : (dashboard?.replyActive
-                                  ? '自動送信待ち (1時間後)'
-                                  : '承認待ち (保留中)'
+                              ? (review.is_pre_integration
+                                ? '導入前未返信'
+                                : (review.star_rating <= 2
+                                  ? '承認待ち (保留中)'
+                                  : (dashboard?.replyActive
+                                    ? '自動送信待ち (1時間後)'
+                                    : '承認待ち (保留中)'
+                                  )
                                 )
                               )
-                              : (review.star_rating >= 3 ? '自動送信完了' : '手動送信完了')
+                              : (review.is_pre_integration
+                                ? '導入前返信済'
+                                : (review.star_rating >= 3 ? '自動送信完了' : '手動送信完了')
+                              )
                             }
                           </span>
 
@@ -2506,8 +2615,8 @@ export default function App() {
       {/* 🖥️ Desktop sidebar or global side menu for wide monitors */}
       <aside className="hidden sm:flex fixed top-16 left-0 bottom-0 w-60 bg-white border-r border-slate-200/80 p-4 flex-col justify-between shadow-sm z-30 no-print">
         <div className="space-y-2">
-          {/* Master Account back button */}
-          {userRole === 'ADMIN' && (
+          {/* Master / Agency Account back button */}
+          {(userRole === 'ADMIN' || userRole === 'AGENCY') && (
             <button
               onClick={() => {
                 setIsViewingShop(false);
@@ -2519,15 +2628,15 @@ export default function App() {
               className="w-full py-3 px-4 rounded-xl font-bold text-xs flex items-center gap-3 transition-all bg-indigo-50 border border-indigo-100/60 text-indigo-700 hover:bg-indigo-100 mb-2 shadow-sm"
             >
               <ArrowLeft className="w-4.5 h-4.5" />
-              契約店舗一覧に戻る
+              店舗一覧に戻る
             </button>
           )}
 
-          {/* Master Account Shop Switcher (Desktop) */}
-          {userRole === 'ADMIN' && shopsList.length > 0 && (
+          {/* Master / Agency Account Shop Switcher (Desktop) */}
+          {(userRole === 'ADMIN' || userRole === 'AGENCY') && shopsList.length > 0 && (
             <div className="bg-indigo-50 border border-indigo-100 rounded-2xl p-3.5 space-y-2 mb-4 shadow-sm">
               <label className="block text-[10px] font-black text-indigo-500 uppercase tracking-widest leading-none">
-                👑 マスター店舗切替 (ADMIN)
+                {userRole === 'ADMIN' ? '👑 マスター店舗切替 (ADMIN)' : '🏢 代理店店舗切替 (AGENCY)'}
               </label>
               <div className="relative mt-1">
                 <select
@@ -2616,7 +2725,7 @@ export default function App() {
 
         <div className="bg-slate-50 border border-slate-200/60 rounded-2xl p-4 space-y-1">
           <p className="text-[10px] font-black text-slate-400 uppercase leading-none">
-            {userRole === 'ADMIN' ? '👑 マスターアカウント' : 'ログインアカウント'}
+            {userRole === 'ADMIN' ? '👑 マスターアカウント' : (userRole === 'AGENCY' ? '🏢 代理店アカウント' : 'ログインアカウント')}
           </p>
           <p className="text-xs font-black text-slate-800 leading-tight pt-1 truncate" title={currentShop.name}>{currentShop.name}</p>
           <p className="text-[9px] text-slate-400 font-bold truncate" title={currentShop.email}>{currentShop.email}</p>

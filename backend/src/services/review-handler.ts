@@ -1,4 +1,4 @@
-import { GoogleGenerativeAI } from '@google/generative-ai';
+import Anthropic from '@anthropic-ai/sdk';
 import { Client } from '@line/bot-sdk';
 import * as dotenv from 'dotenv';
 import * as path from 'path';
@@ -27,7 +27,7 @@ export interface ReviewResponseResult {
 
 export class ReviewHandlerService {
   private lineClient: Client | null = null;
-  private genAI: GoogleGenerativeAI | null = null;
+  private anthropic: Anthropic | null = null;
 
   // 星3〜5用の5パターンの自動返信定型文（AIコスト0円で高評価にランダム返信）
   private static staticTemplates = [
@@ -49,10 +49,12 @@ export class ReviewHandlerService {
       });
     }
 
-    // Initialize Gemini (using gemini-2.5-flash which we verified as active in 2026)
-    const geminiApiKey = process.env.GEMINI_API_KEY;
-    if (geminiApiKey) {
-      this.genAI = new GoogleGenerativeAI(geminiApiKey);
+    // Initialize Claude (Anthropic SDK)
+    const claudeApiKey = process.env.CLAUDE_API_KEY;
+    if (claudeApiKey) {
+      this.anthropic = new Anthropic({
+        apiKey: claudeApiKey,
+      });
     }
   }
 
@@ -70,8 +72,8 @@ export class ReviewHandlerService {
     console.log(`\n📬 [新着口コミ検知] 店舗: 「${storeName}」 | 投稿者: ${review.reviewerName} | 星数: ★${review.starRating}`);
     console.log(`💬 コメント: "${review.comment || '(本文なし)'}"`);
 
-    if (!this.genAI) {
-      throw new Error('❌ Gemini API is not initialized. Check GEMINI_API_KEY in .env');
+    if (!this.anthropic) {
+      throw new Error('❌ Claude API is not initialized. Check CLAUDE_API_KEY in .env');
     }
 
     // --- 星3〜5（中・高評価）: AIで魅力的な感謝・アピール返信文を作成 ---
@@ -147,10 +149,12 @@ export class ReviewHandlerService {
   }
 
   /**
-   * Geminiを使用して、高評価に対する感謝とアピールを兼ねた魅力的な返信文を自動生成します
+   * Claudeを使用して、高評価に対する感謝とアピールを兼ねた魅力的な返信文を自動生成します
    */
   private async generatePositiveDraft(review: ReviewEvent, storeName: string, customPrompt?: string): Promise<string> {
-    const model = this.genAI!.getGenerativeModel({ model: 'gemini-3.6-flash' });
+    if (!this.anthropic) {
+      return 'この度は温かい評価と口コミのご投稿、誠にありがとうございます！お客様からのお褒めの言葉が、スタッフ一同大変励みになります。これからもより一層喜んでいただけるようサービス向上に努めてまいります。またのご来店を心よりお待ちしております！';
+    }
 
     const prompt = `
       あなたは店舗「${storeName}」のオーナー代理として、お客様から届いたGoogleマップ上の高評価口コミ（★${review.starRating}）に対して、返信用のお礼メッセージ下書きを作成してください。
@@ -176,28 +180,32 @@ export class ReviewHandlerService {
     `;
 
     try {
-      const result = await model.generateContent(prompt);
-      const response = await result.response;
-      return response.text().trim();
+      const response = await this.anthropic.messages.create({
+        model: 'claude-sonnet-5',
+        max_tokens: 400,
+        messages: [{ role: 'user', content: prompt }]
+      });
+
+      const responseText = response.content
+        .filter(block => block.type === 'text')
+        .map(block => block.text)
+        .join('\n')
+        .trim();
+
+      return responseText;
     } catch (error: any) {
-      console.warn('⚠️ gemini-3.6-flash failed in generatePositiveDraft, trying gemini-3.5-flash:', error.message || error);
-      try {
-        const fallbackModel = this.genAI!.getGenerativeModel({ model: 'gemini-3.5-flash' });
-        const result = await fallbackModel.generateContent(prompt);
-        const response = await result.response;
-        return response.text().trim();
-      } catch (fallbackErr: any) {
-        console.error('❌ Both gemini-3.6-flash and gemini-3.5-flash failed in generatePositiveDraft:', fallbackErr.message || fallbackErr);
-        return 'この度は温かい評価と口コミのご投稿、誠にありがとうございます！お客様からのお褒めの言葉が、スタッフ一同大変励みになります。これからもより一層喜んでいただけるようサービス向上に努めてまいります。またのご来店を心よりお待ちしております！';
-      }
+      console.error('❌ Claude generation failed in generatePositiveDraft:', error.message || error);
+      return 'この度は温かい評価と口コミのご投稿、誠にありがとうございます！お客様からのお褒めの言葉が、スタッフ一同大変励みになります。これからもより一層喜んでいただけるようサービス向上に努めてまいります。またのご来店を心よりお待ちしております！';
     }
   }
 
   /**
-   * Geminiを使用して、丁寧で真摯な謝罪下書き文を自動生成します（制約事項遵守）
+   * Claudeを使用して、丁寧で真摯な謝罪下書き文を自動生成します（制約事項遵守）
    */
   private async generateApologyDraft(review: ReviewEvent, storeName: string, customPrompt?: string): Promise<string> {
-    const model = this.genAI!.getGenerativeModel({ model: 'gemini-3.6-flash' });
+    if (!this.anthropic) {
+      return 'この度は当店のご利用に際し、ご満足のいくサービスを提供できず、不快な思いをさせてしまいましたことを深くお詫び申し上げます。今後、このようなことがないようスタッフへの指導とサービスの改善に努めてまいります。';
+    }
 
     const prompt = `
       あなたは店舗「${storeName}」のオーナー代理として、お客様から届いたGoogleマップ上の低評価口コミ（★${review.starRating}）に対して、返信用のお詫びメッセージ下書きを作成してください。
@@ -223,25 +231,30 @@ export class ReviewHandlerService {
     `;
 
     try {
-      const result = await model.generateContent(prompt);
-      const response = await result.response;
-      return response.text().trim();
+      const response = await this.anthropic.messages.create({
+        model: 'claude-sonnet-5',
+        max_tokens: 400,
+        messages: [{ role: 'user', content: prompt }]
+      });
+
+      const responseText = response.content
+        .filter(block => block.type === 'text')
+        .map(block => block.text)
+        .join('\n')
+        .trim();
+
+      return responseText;
     } catch (error: any) {
-      console.warn('⚠️ gemini-3.6-flash failed in generateApologyDraft, trying gemini-3.5-flash:', error.message || error);
-      try {
-        const fallbackModel = this.genAI!.getGenerativeModel({ model: 'gemini-3.5-flash' });
-        const result = await fallbackModel.generateContent(prompt);
-        const response = await result.response;
-        return response.text().trim();
-      } catch (fallbackErr: any) {
-        console.error('❌ Both gemini-3.6-flash and gemini-3.5-flash failed in generateApologyDraft:', fallbackErr.message || fallbackErr);
-        return 'この度は当店のご利用に際し、ご満足のいくサービスを提供できず、不快な思いをさせてしまいましたことを深くお詫び申し上げます。今後、このようなことがないようスタッフへの指導 and サービスの改善に努めてまいります。';
-      }
+      console.error('❌ Claude generation failed in generateApologyDraft:', error.message || error);
+      return 'この度は当店のご利用に際し、ご満足のいくサービスを提供できず、不快な思いをさせてしまいましたことを深くお詫び申し上げます。今後、このようなことがないようスタッフへの指導とサービスの改善に努めてまいります。';
     }
   }
 
   /**
    * Geminiを使用して、店主からの特定指示（directive）に基づいて、謝罪下書き文を書き直します（再生成）
+   */
+  /**
+   * Claudeを使用して、店主からの特定指示（directive）に基づいて、お礼・お詫び下書き文を書き直します（再生成）
    */
   public async generateCustomApologyDraft(
     review: { starRating: number; comment: string | null },
@@ -249,11 +262,9 @@ export class ReviewHandlerService {
     customPrompt?: string,
     directive?: string
   ): Promise<string> {
-    if (!this.genAI) {
-      throw new Error('❌ Gemini API is not initialized. Check GEMINI_API_KEY in .env');
+    if (!this.anthropic) {
+      throw new Error('❌ Claude API is not initialized. Check CLAUDE_API_KEY in .env');
     }
-
-    const model = this.genAI.getGenerativeModel({ model: 'gemini-3.6-flash' });
 
     const isLowRating = review.starRating <= 2;
 
@@ -278,22 +289,24 @@ export class ReviewHandlerService {
     `;
 
     try {
-      const result = await model.generateContent(prompt);
-      const response = await result.response;
-      return response.text().trim();
+      const response = await this.anthropic.messages.create({
+        model: 'claude-sonnet-5',
+        max_tokens: 400,
+        messages: [{ role: 'user', content: prompt }]
+      });
+
+      const responseText = response.content
+        .filter(block => block.type === 'text')
+        .map(block => block.text)
+        .join('\n')
+        .trim();
+
+      return responseText;
     } catch (error: any) {
-      console.warn('⚠️ gemini-3.6-flash failed in generateCustomApologyDraft, trying gemini-3.5-flash:', error.message || error);
-      try {
-        const fallbackModel = this.genAI.getGenerativeModel({ model: 'gemini-3.5-flash' });
-        const result = await fallbackModel.generateContent(prompt);
-        const response = await result.response;
-        return response.text().trim();
-      } catch (fallbackErr: any) {
-        console.error('❌ Both gemini-3.6-flash and gemini-3.5-flash failed in generateCustomApologyDraft:', fallbackErr.message || fallbackErr);
-        return isLowRating
-          ? 'この度は当店のご利用に際し、ご満足のいくサービスを提供できず、不快な思いをさせてしまいましたことを深くお詫び申し上げます。今後、このようなことがないようスタッフへの指導とサービスの改善に努めてまいります。'
-          : 'この度はご来店いただき、また素晴らしい評価をありがとうございます。これからも愛されるお店を目指して努力してまいります。またのお越しをお待ちしております！';
-      }
+      console.error('❌ Claude generation failed in generateCustomApologyDraft:', error.message || error);
+      return isLowRating
+        ? 'この度は当店のご利用に際し、ご満足のいくサービスを提供できず、不快な思いをさせてしまいましたことを深くお詫び申し上げます。今後、このようなことがないようスタッフへの指導とサービスの改善に努めてまいります。'
+        : 'この度はご来店いただき、また素晴らしい評価をありがとうございます。これからも愛されるお店を目指して努力してまいります。またのお越しをお待ちしております！';
     }
   }
 

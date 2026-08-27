@@ -10,7 +10,7 @@ const prisma = new PrismaClient();
 async function main() {
   console.log('--- DB Check Draft Posts ---');
   const shopKeywords = await prisma.shopKeywords.findUnique({
-    where: { shop_id: '365meo-shop-uuid' }
+    where: { shop_id: 'thanx-create-uuid' }
   });
 
   if (!shopKeywords) {
