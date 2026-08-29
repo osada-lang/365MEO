@@ -1976,6 +1976,22 @@ async function syncReviewsFromGBP(shopId: string) {
             }
           });
           console.log(`📡 [syncReviewsFromGBP] Saved review to database: ID = ${savedReview.review_id} | is_auto_replied = ${savedReview.is_auto_replied} | requires_alert = ${savedReview.requires_alert}`);
+        } else {
+          // 🔄 GBP Sync: Google側での直接返信を検知・自動同期
+          const googleReplyComment = gReview.reviewReply?.comment || null;
+
+          // Google側で返信があり、ローカルがまだ「未返信」状態の場合
+          if (googleReplyComment && !existing.is_auto_replied) {
+            console.log(`🔄 [syncReviewsFromGBP] クチコミID ${reviewId} に対する直接返信をGoogle側で検出。返信ステータスを「返信済み」に自動同期します。`);
+            await prisma.reviewLogs.update({
+              where: { id: existing.id },
+              data: {
+                is_auto_replied: true,
+                reply_text: googleReplyComment, // 実際のGoogle側の返信文面で上書き
+                requires_alert: false,         // アラート監視・LINE通知対象から解除
+              }
+            });
+          }
         }
       }
     }
