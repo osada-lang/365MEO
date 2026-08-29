@@ -1103,6 +1103,7 @@ app.post('/api/shops/:shopId/reviews/:reviewId/reply', async (req, res) => {
       data: {
         reply_text: replyText,
         is_auto_replied: true, // Marked as replied
+        reply_source: 'MANUAL',
       }
     });
 
@@ -1266,27 +1267,27 @@ async function generateSingleDraft(
   const themes = [
     {
       name: "悩み解決型 (Trouble Resolution)",
-      focus: "ターゲット層特有の具体的なお悩みやニーズを切り口にし、どのようなアプローチでそれを解決に導くのかを語る構成。"
+      focus: "ターゲット層特有の具体的かつ代表的なお悩み（例：集客、美容、サービス選び、各種不便など、その店舗が解決できるお悩みや課題）を切り口にし、どのようなアプローチでそれを根本からケア・解決・サポートしていくのかを詳しく語る構成。"
     },
     {
-      name: "サービス詳細紹介型 (Service Highlight)",
-      focus: "店舗が提供する特定のメインサービス、主力メニュー、または特筆すべき強みについて、その特徴や得られるメリットを深く解説する構成。"
+      name: "サービス詳細紹介型 (Service / Menu Highlight)",
+      focus: "特定の提供サービス、おすすめのメニュー、または主力商品について、その特徴、得られる効果、なぜそれが必要・おすすめなのかを専門的な事実を交えて深く解説する構成。"
     },
     {
       name: "利用シーン・シチュエーション型 (Situation & Context)",
-      focus: "具体的な利用・来店シチュエーションに焦点を当て、店舗の利便性や魅力、どのような場面で選ばれるのかをアピールする構成。"
+      focus: "「〇〇な時に利用したい」「忙しい合間にリフレッシュしたい」「特別な日に利用したい」といった、具体的で魅力的な利用・来店シチュエーションに焦点を当て、店舗の利便性や環境、通いやすさをアピールする構成。"
     },
     {
-      name: "よくある質問回答型 (FAQ / Q&A)",
-      focus: "お客様やユーザーからよく受ける代表的な疑問や質問に対する、具体的で分かりやすい解説を提示する構成。"
+      name: "よくある質問回答型 (FAQ / Q&A answering)",
+      focus: "お客様からよく受ける代表的な疑問や質問（例：料金や利用の流れ、効果、準備するものなど）に対する、具体的で分かりやすい解説を提示して不安を解消する構成。"
     },
     {
       name: "選ばれる理由・こだわり提示型 (Unique Selling Proposition)",
-      focus: "他店との圧倒的な違い、こだわり（カウンセリング、素材、技術、専門知識、誠実な姿勢など）について客観的に解説する構成。"
+      focus: "他店との違い、店舗独自の強みやこだわり（例：丁寧なカウンセリング、専門知識、独自の技術・こだわり素材、アフターフォローなど）について客観的な事実に基づいて解説する構成。"
     },
     {
       name: "特定ターゲット特化アピール型 (Target Audience Appeal)",
-      focus: "特定のターゲット層（例：忙しいビジネスパーソン、初めて店舗を利用される方など、ターゲット設定に合わせた層）に対して、店舗を利用する具体的なメリットを語る構成。"
+      focus: "「特定の目的を持つ方」「特定のお悩みを持つお客様」など、ターゲットを具体的に絞り込み、その層が店舗を利用することで得られるメリットや価値を具体的に語る構成。"
     }
   ];
 
@@ -1317,26 +1318,35 @@ async function generateSingleDraft(
     【作成の絶対ルール（厳守してください）】
     1. 結論ファースト（PREP法）の徹底:
        文章の冒頭（最初の一文、30〜50文字程度）で、時候の挨拶などを一切省き、「【主要キーワード/テーマ】店舗名＋エリア名＋主要サービス（結論）」を一発で言い切る形で書き出してください。
+
     2. 主語・エリア・サービス名の明確化（5W1Hの網羅）:
        主語を「当店」や「当院」などの曖昧な言葉にせず、必ず「${shop.name}」という具体的な店舗名で表記してください。また、エリア名（店舗の所在地・地域）を一文の中に自然に含めてください。エリア名については、必ず「所在地住所情報（固定フッター）」に記載されている住所情報のみから正しい地域名（市区町村名や駅名など）を抽出し、それを使用してください。フッターに住所情報がない場合、あるいは未設定の場合は、具体的な地域名は出力せず、所在地を特定しない汎用的な表現にしてください。メインキーワードやその他の情報から地域名を取得したり、存在しない架空の地域名を捏造することは絶対に禁止します。
-    3. メインキーワード of 投稿の完全含有:
+
+    3. メインキーワードの完全含有:
        指定されたメインキーワード [ ${mainKeywords.join(', ')} ] を、文章全体の自然な文脈にそって【すべて必ず】本文中に含めてください。単なるキーワードの羅列や強引な詰め込みは厳禁です。
+
     4. 本日のサブキーワード:
        本日の日替わりサブキーワード [ ${selectedSubKeywords.join(', ')} ] を、文章の中に自然に盛り込んでください。
-    5. 曖昧な表現 of アピールの排除と一次情報・数値の提示:
+
+    5. 曖昧な表現の排除と一次情報・数値の提示:
        抽象的な形容詞や曖昧なアピールを徹底的に排除してください。代わりに、店舗が実際に提供している客観的・専門的な事実や具体的なアプローチ（一次情報、独自のこだわり、サービス工程、実績など）を具体的に記述してください。
+
     6. 特徴・こだわりの箇条書き構造化（中盤）:
        文章の中盤部分で、今回のテーマに関連する店舗のこだわり・特徴・サービス内容を、必ず【3つの箇条書き（「・」マークを使用）】で簡潔に整理してください。LLMが最も要約・引用しやすい構造化テキストに仕上げてください。（マークダウンのアスタリスク「*」や「-」は崩れやすいため使用禁止です）
        （箇条書き例：
          ・〇〇：具体的かつ客観的な強みや内容を1文で。
          ・〇〇：具体的かつ客観的な強みや内容を1文で。
          ・〇〇：具体的かつ客観的な強みや内容を1文で。）
+
     7. アクション喚起（CTA）の自然な配置（後半）:
        文章の最後（箇条書きの後）に、ユーザーや検索者が次に取るべき具体的な行動を明記してください。
+
     8. 段落分けと空行:
        文章全体を「①冒頭結論」「②3つの箇条書き」「③CTA」の論理的な段落に分け、段落の間には【必ず空行を1行】挟んでください。1行が長くなりすぎず、モバイル端末でもスクロールしやすい体裁に仕上げてください。
+
     9. 文字数制限:
-       全体の本文は【250文字〜350文字程度（改行を除く）】に収め、一般客が読んで親しみやすく自然な日本語で仕上げてください。
+       全体の本文は【150文字〜250文字程度（改行を除く）】に収め、一般客が読んで親しみやすく自然な日本語で仕上げてください。
+
     10. 署名・連絡先・記号マークダウンの排除:
         本文の中には、ホームページURL、電話番号、アクションボタンの文言（「詳細はこちら」「今すぐ予約」など）、住所、店舗名のフッター署名、および絵文字やマークダウン記号（**、#、*など）は【絶対に】含めないでください。純粋な文章テキストと「・」マーク、改行のみで出力してください。
 
@@ -1934,6 +1944,7 @@ async function syncReviewsFromGBP(shopId: string) {
                 comment,
                 reply_text: aiDraft,
                 is_auto_replied: !!replyComment, // If already replied on Google, mark true, else false
+                reply_source: replyComment ? 'GBP' : null,
                 requires_alert: false, // No LINE alerts!
                 create_time: new Date(createTime),
               }
@@ -1980,7 +1991,7 @@ async function syncReviewsFromGBP(shopId: string) {
           // 🔄 GBP Sync: Google側での直接返信を検知・自動同期
           const googleReplyComment = gReview.reviewReply?.comment || null;
 
-          // Google側で返信があり、ローカルがまだ「未返信」状態の場合
+          // Google側で実際の返信が存在し、ローカルデータベースがまだ「未返信」状態の場合
           if (googleReplyComment && !existing.is_auto_replied) {
             console.log(`🔄 [syncReviewsFromGBP] クチコミID ${reviewId} に対する直接返信をGoogle側で検出。返信ステータスを「返信済み」に自動同期します。`);
             await prisma.reviewLogs.update({
@@ -1988,7 +1999,8 @@ async function syncReviewsFromGBP(shopId: string) {
               data: {
                 is_auto_replied: true,
                 reply_text: googleReplyComment, // 実際のGoogle側の返信文面で上書き
-                requires_alert: false,         // アラート監視・LINE通知対象から解除
+                requires_alert: false,         // アラート監視や未返信放置アラートの対象から解除
+                reply_source: 'GBP',
               }
             });
           }
@@ -2113,7 +2125,10 @@ async function runBackgroundScheduler() {
                     // Mark as replied in database
                     await prisma.reviewLogs.update({
                       where: { id: pRev.id },
-                      data: { is_auto_replied: true }
+                      data: {
+                        is_auto_replied: true,
+                        reply_source: 'AUTO',
+                      }
                     });
                     console.log(`✅ [自動送信成功] 口コミ: ${pRev.review_id} への返信投稿を完了しました。`);
                   } catch (gmbErr: any) {
@@ -2197,89 +2212,79 @@ app.listen(port, () => {
     try {
       console.log('👤 Checking Master Account (365meo.gbp@gmail.com) initialization...');
       
-      // Cascade delete existing records for '365meo-shop-uuid' to completely delete any old corrupted state
+      // 🛡️ Bug-Free Onboarding: Create 365MEO live account ONLY if it does not exist.
+      // This completely prevents data wiping upon server restarts (due to redeploys or password changes)!
       const targetThanxId = '365meo-shop-uuid';
-      console.log(`🧹 Deleting and purging 365MEO OWNER data from live database for ID: ${targetThanxId}...`);
-      await prisma.replyTemplates.deleteMany({ where: { shop_id: targetThanxId } });
-      await prisma.shopKeywords.deleteMany({ where: { shop_id: targetThanxId } });
-      await prisma.reviewLogs.deleteMany({ where: { shop_id: targetThanxId } });
-      await prisma.magicLinkToken.deleteMany({ where: { shop_id: targetThanxId } });
-      await prisma.shop.deleteMany({ where: { id: targetThanxId } });
+      const liveThanxExists = await prisma.shop.findUnique({
+        where: { email: '365meo@gmail.com' }
+      });
 
-      // Search and delete by email as well to ensure total cleanup
-      const thanxByEmail = await prisma.shop.findUnique({ where: { email: '365meo@gmail.com' } });
-      if (thanxByEmail) {
-        await prisma.replyTemplates.deleteMany({ where: { shop_id: thanxByEmail.id } });
-        await prisma.shopKeywords.deleteMany({ where: { shop_id: thanxByEmail.id } });
-        await prisma.reviewLogs.deleteMany({ where: { shop_id: thanxByEmail.id } });
-        await prisma.magicLinkToken.deleteMany({ where: { shop_id: thanxByEmail.id } });
-        await prisma.shop.delete({ where: { id: thanxByEmail.id } });
+      if (!liveThanxExists) {
+        console.log('✨ Seeding live "株式会社３６５" OWNER account for the first time...');
+        await prisma.shop.create({
+          data: {
+            id: targetThanxId,
+            name: '株式会社３６５',
+            email: '365meo@gmail.com',
+            password: 'Tody-12191019',
+            role: 'OWNER',
+            agency_name: '365MEO',
+            google_location_id: 'locations/7613471938029191960',
+            google_drive_folder_id: '1AIgemm9-fvP-eLwP7p2p8Plja1mbOJtX',
+            line_user_id: process.env.LINE_USER_ID || 'U205e0595cff6e3882288962525941500',
+            reply_active: true,
+            post_active: true,
+            custom_review_prompt: '株式会社３６５のカスタマーサポートとして、極めて真摯にお詫びしてください。店舗様の売上向上に本気で伴走する企業として、サービス改善へ向けて早急に対応する熱い誠意を伝えてください。',
+          }
+        });
+
+        // Recreate ShopKeywords with clean pristine defaults (draft_posts will be null, so generated fresh!)
+        await prisma.shopKeywords.create({
+          data: {
+            shop_id: targetThanxId,
+            main_keywords: JSON.stringify(['名古屋 MEO', 'MEO対策', 'Googleマップ集客', 'ローカルSEO', '365MEO']),
+            sub_keywords: JSON.stringify(['口コミ対策', 'GBP運用', 'マップ順位', '集客効果', '名古屋マーケティング', '店舗集客', '自動投稿', 'SNS連動', '口コミ返信', 'AI作成']),
+            fixed_footer: '店舗名: 株式会社３６５\n住所: 名古屋市中区\nお問い合わせ: 365meo@gmail.com',
+            custom_prompt: '丁寧で自然なトーンで、MEO集客サポートの魅力を訴求してください。',
+            post_time_hour: 12,
+          }
+        });
+
+        // Recreate default templates
+        const defaultStar3 = [
+          'ご来店および貴重なご意見をいただきありがとうございます。ご指摘いただいた点を真摯に受け止め、今後のサービス向上に役立ててまいります。',
+          'この度はご来店いただきありがとうございました。至らない点があったことをお詫びするとともに、スタッフ一同、よりご満足いただけるお店づくりに努めてまいります。',
+          'ご感想をお寄せいただきありがとうございます。いただいたご意見を店舗全体で共有し、改善を重ね要領よく対応してまいります。またのご来店をお待ちしております。',
+          'ご来店ありがとうございました。お褒めいただいた点も、ご指摘いただいた点も大変参考になります。今後ともよろしくお願いいたします。',
+          'ご意見ありがとうございます。次回ご来店の際には、より良いサービスを提供できるよう、スタッフ教育や設備改善に取り組んでまいります。'
+        ];
+        const defaultStar4 = [
+          'この度はご来店いただき、また高評価をありがとうございます！ご満足いただけて大変嬉しく思います。またのお越しを心よりお待ちしております。',
+          'お忙しい中、嬉しい口コミをご投稿いただき誠にありがとうございます。これからも素敵なお時間を提供できるよう、努力を続けてまいります。',
+          'ご来店および素晴らしい評価をありがとうございます。お食事やお店の雰囲いを楽しんでいただけて何よりです。次回のご来店もお待ちしております。',
+          '大変嬉しいお声をいただき、スタッフ一同の励みになります！次回はさらにご満足いただけるよう、心を込めておもてなしいたします。',
+          'ご投稿ありがとうございます！高評価をいただき感謝申し上げます。今後とも変わらぬご愛顧 of the hood, よろしくお願い申し上げます。'
+        ];
+        const defaultStar5 = [
+          'この度は最高評価をいただき、誠にありがとうございます！本当に嬉しいお言葉を励みに、これからも最上のサービスを追求してまいります。',
+          'ご来店いただき、またお褒めの言葉をいただき大変光栄です！また次回も「来てよかった」と思っていただけるよう、全力を尽くします。',
+          '素晴らしい評価をありがとうございます！当店での時間が素敵な思い出となったのであれば幸いです。またのご来店を心よりお待ちしております！',
+          'スタッフ全員が笑顔になる最高の口コミをありがとうございます！いただいたエネルギーを糧に, 次回も完璧な施術・サービスを提供します。',
+          'ご来店ありがとうございました！星5つの満点評価をいただき感謝の極みです。これからもお客様に愛され続けるお店を目指して頑張ります！'
+        ];
+        await prisma.replyTemplates.create({
+          data: {
+            shop_id: targetThanxId,
+            templates_star3: JSON.stringify(defaultStar3),
+            templates_star4: JSON.stringify(defaultStar4),
+            templates_star5: JSON.stringify(defaultStar5),
+          }
+        });
+
+        console.log('✅ Live "合同会社THANX CREATE" account has been successfully seeded for the first time!');
+      } else {
+        console.log('ℹ️ Live "合同会社THANX CREATE" account already exists. Skipping seed initialization to protect custom settings.');
       }
-      console.log('🧹 Purge completed successfully.');
-
-      // Create a BRAND-NEW, pristine account with clean defaults
-      console.log('✨ Issuing brand-new clean OWNER account for "株式会社３６５"...');
-      const thanxOwner = await prisma.shop.create({
-        data: {
-          id: targetThanxId,
-          name: '株式会社３６５',
-          email: '365meo@gmail.com',
-          password: 'Tody-12191019',
-          role: 'OWNER',
-          agency_name: '365MEO',
-          google_location_id: 'locations/7613471938029191960',
-          google_drive_folder_id: '1AIgemm9-fvP-eLwP7p2p8Plja1mbOJtX',
-          line_user_id: process.env.LINE_USER_ID || 'U205e0595cff6e3882288962525941500',
-          reply_active: true,
-          post_active: true,
-          custom_review_prompt: '株式会社３６５のカスタマーサポートとして、極めて真摯にお詫びしてください。店舗様の売上向上に本気で伴走する企業として、サービス改善へ向けて早急に対応する熱い誠意を伝えてください。',
-        }
-      });
-
-      // Recreate ShopKeywords with clean pristine defaults (draft_posts will be null, so generated fresh!)
-      await prisma.shopKeywords.create({
-        data: {
-          shop_id: targetThanxId,
-          main_keywords: JSON.stringify(['名古屋 MEO', 'MEO対策', 'Googleマップ集客', 'ローカルSEO', '365MEO']),
-          sub_keywords: JSON.stringify(['口コミ対策', 'GBP運用', 'マップ順位', '集客効果', '名古屋マーケティング', '店舗集客', '自動投稿', 'SNS連動', '口コミ返信', 'AI作成']),
-          fixed_footer: '店舗名: 株式会社３６５\n住所: 名古屋市中区\nお問い合わせ: 365meo@gmail.com',
-          custom_prompt: '丁寧で自然なトーンで、MEO集客サポートの魅力を訴求してください。',
-          post_time_hour: 12,
-        }
-      });
-
-      // Recreate default templates
-      const defaultStar3 = [
-        'ご来店および貴重なご意見をいただきありがとうございます。ご指摘いただいた点を真摯に受け止め、今後のサービス向上に役立ててまいります。',
-        'この度はご来店いただきありがとうございました。至らない点があったことをお詫びするとともに、スタッフ一同、よりご満足いただけるお店づくりに努めてまいります。',
-        'ご感想をお寄せいただきありがとうございます。いただいたご意見を店舗全体で共有し、改善を重ね要領よく対応してまいります。またのご来店をお待ちしております。',
-        'ご来店ありがとうございました。お褒めいただいた点も、ご指摘いただいた点も大変参考になります。今後ともよろしくお願いいたします。',
-        'ご意見ありがとうございます。次回ご来店の際には、より良いサービスを提供できるよう、スタッフ教育や設備改善に取り組んでまいります。'
-      ];
-      const defaultStar4 = [
-        'この度はご来店いただき、また高評価をありがとうございます！ご満足いただけて大変嬉しく思います。またのお越しを心よりお待ちしております。',
-        'お忙しい中、嬉しい口コミをご投稿いただき誠にありがとうございます。これからも素敵なお時間を提供できるよう、努力を続けてまいります。',
-        'ご来店および素晴らしい評価をありがとうございます。お食事やお店の雰囲いを楽しんでいただけて何よりです。次回のご来店もお待ちしております。',
-        '大変嬉しいお声をいただき、スタッフ一同の励みになります！次回はさらにご満足いただけるよう、心を込めておもてなしいたします。',
-        'ご投稿ありがとうございます！高評価をいただき感謝申し上げます。今後とも変わらぬご愛顧 of the hood, よろしくお願い申し上げます。'
-      ];
-      const defaultStar5 = [
-        'この度は最高評価をいただき、誠にありがとうございます！本当に嬉しいお言葉を励みに、これからも最上のサービスを追求してまいります。',
-        'ご来店いただき、またお褒めの言葉をいただき大変光栄です！また次回も「来てよかった」と思っていただけるよう、全力を尽くします。',
-        '素晴らしい評価をありがとうございます！当店での時間が素敵な思い出となったのであれば幸いです。またのご来店を心よりお待ちしております！',
-        'スタッフ全員が笑顔になる最高の口コミをありがとうございます！いただいたエネルギーを糧に、次回も完璧な施術・サービスを提供します。',
-        'ご来店ありがとうございました！星5つの満点評価をいただき感謝の極みです。これからもお客様に愛され続けるお店を目指して頑張ります！'
-      ];
-      await prisma.replyTemplates.create({
-        data: {
-          shop_id: targetThanxId,
-          templates_star3: JSON.stringify(defaultStar3),
-          templates_star4: JSON.stringify(defaultStar4),
-          templates_star5: JSON.stringify(defaultStar5),
-        }
-      });
-
-      console.log('✅ Brand-new clean "合同会社THANX CREATE" account has been successfully issued!');
 
       // Safe purge existing demo agency and demo store
       const targetAgencyId = 'demo-agency-uuid';
@@ -2432,6 +2437,7 @@ app.listen(port, () => {
           is_auto_replied: true,
           requires_alert: false,
           escalation_triggered: false,
+          reply_source: 'GBP',
           create_time: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000)
         }
       });
@@ -2462,6 +2468,7 @@ app.listen(port, () => {
           is_auto_replied: true,
           requires_alert: false,
           escalation_triggered: false,
+          reply_source: 'GBP',
           create_time: new Date(Date.now() - 4 * 24 * 60 * 60 * 1000)
         }
       });
@@ -2510,7 +2517,7 @@ app.listen(port, () => {
           email: 'moiccho@gmail.com',
           password: 'Hareteru-Meat-8080',
           role: 'OWNER',
-          agency_name: 'THANXCREATE',
+          agency_name: '365MEO',
           google_location_id: 'locations/10645469356950848476',
           google_drive_folder_id: '1YAGUDKqOy1UBta7XGpbO_s3A7vqr3DeB',
           line_user_id: null,
@@ -2539,6 +2546,28 @@ app.listen(port, () => {
       });
 
       // Default templates
+      const defaultStar3 = [
+        'ご来店および貴重なご意見をいただきありがとうございます。ご指摘いただいた点を真摯に受け止め、今後のサービス向上に役立ててまいります。',
+        'この度はご来店いただきありがとうございました。至らない点があったことをお詫びするとともに、スタッフ一同、よりご満足いただけるお店づくりに努めてまいります。',
+        'ご感想をお寄せいただきありがとうございます。いただいたご意見を店舗全体で共有し、改善を重ね要領よく対応してまいります。またのご来店をお待ちしております。',
+        'ご来店ありがとうございました。お褒めいただいた点も、ご指摘いただいた点も大変参考になります。今後ともよろしくお願いいたします。',
+        'ご意見ありがとうございます。次回ご来店の際には、より良いサービスを提供できるよう、スタッフ教育や設備改善に取り組んでまいります。'
+      ];
+      const defaultStar4 = [
+        'この度はご来店いただき、また高評価をありがとうございます！ご満足いただけて大変嬉しく思います。またのお越しを心よりお待ちしております。',
+        'お忙しい中、嬉しい口コミをご投稿いただき誠にありがとうございます。これからも素敵なお時間を提供できるよう、努力を続けてまいります。',
+        'ご来店および素晴らしい評価をありがとうございます。お食事やお店の雰囲いを楽しんでいただけて何よりです。次回のご来店もお待ちしております。',
+        '大変嬉しいお声をいただき、スタッフ一同の励みになります！次回はさらにご満足いただけるよう、心を込めておもてなしいたします。',
+        'ご投稿ありがとうございます！高評価をいただき感謝申し上げます。今後とも変わらぬご愛顧 of the hood, よろしくお願い申し上げます。'
+      ];
+      const defaultStar5 = [
+        'この度は最高評価をいただき、誠にありがとうございます！本当に嬉しいお言葉を励みに、これからも最上のサービスを追求してまいります。',
+        'ご来店いただき、またお褒めの言葉をいただき大変光栄です！また次回も「来てよかった」と思っていただけるよう、全力を尽くします。',
+        '素晴らしい評価をありがとうございます！当店での時間が素敵な思い出となったのであれば幸いです。またのご来店を心よりお待ちしております！',
+        'スタッフ全員が笑顔になる最高の口コミをありがとうございます！いただいたエネルギーを糧に、次回も完璧な施術・サービスを提供します。',
+        'ご来店ありがとうございました！星5つの満点評価をいただき感謝の極みです。これからもお客様に愛され続けるお店を目指して頑張ります！'
+      ];
+
       await prisma.replyTemplates.create({
         data: {
           shop_id: targetHareteruId,

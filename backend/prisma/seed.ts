@@ -253,6 +253,7 @@ async function main() {
         is_auto_replied: true,
         requires_alert: false,
         escalation_triggered: false,
+        reply_source: 'GBP',
         create_time: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000)
       }
     });
@@ -283,6 +284,7 @@ async function main() {
         is_auto_replied: true,
         requires_alert: false,
         escalation_triggered: false,
+        reply_source: 'GBP',
         create_time: new Date(Date.now() - 4 * 24 * 60 * 60 * 1000)
       }
     });

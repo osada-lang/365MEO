@@ -73,6 +73,7 @@ model ReviewLogs {
   is_auto_replied     Boolean  @default(false)
   requires_alert      Boolean  @default(false)
   escalation_triggered Boolean @default(false)
+  reply_source        String?
   create_time         DateTime
   created_at          DateTime @default(now())
 
