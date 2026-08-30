@@ -2207,10 +2207,10 @@ app.listen(port, () => {
     }
   }, 15 * 1000);
 
-  // Master Account (365meo.gbp@gmail.com) Automatic Initialization / Sync
+  // Master Account (gbp.suport365@gmail.com) Automatic Initialization / Sync
   setTimeout(async () => {
     try {
-      console.log('👤 Checking Master Account (365meo.gbp@gmail.com) initialization...');
+      console.log('👤 Checking Master Account (gbp.suport365@gmail.com) initialization...');
       
       // 🛡️ Bug-Free Onboarding: Create 365MEO live account ONLY if it does not exist.
       // This completely prevents data wiping upon server restarts (due to redeploys or password changes)!
@@ -2580,10 +2580,10 @@ app.listen(port, () => {
       console.log('✅ ラフ＆ミートラウンジ晴れテル。 demo data have been successfully seeded!');
 
       // Load secure master admin password from environment variable with a safe dynamic fallback
-      const password = process.env.MASTER_ADMIN_PASSWORD || 'password';
+      const password = process.env.MASTER_ADMIN_PASSWORD || 'Suport365-MEO-Voice';
 
       const masterAccount = await prisma.shop.upsert({
-        where: { email: '365meo.gbp@gmail.com' },
+        where: { email: 'gbp.suport365@gmail.com' },
         update: {
           password: password,
           role: 'ADMIN',
@@ -2593,7 +2593,7 @@ app.listen(port, () => {
         },
         create: {
           name: '365MEO運営本部',
-          email: '365meo.gbp@gmail.com',
+          email: 'gbp.suport365@gmail.com',
           password: password,
           role: 'ADMIN',
           post_active: false,
