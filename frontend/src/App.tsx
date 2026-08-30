@@ -915,6 +915,16 @@ export default function App() {
               </div>
             </form>
 
+            <div className="flex items-center justify-center gap-4 border-t border-slate-100 pt-5 text-center">
+              <a href="/terms.html" target="_blank" rel="noopener noreferrer" className="text-[11px] font-bold text-slate-400 hover:text-indigo-500 transition-colors">
+                利用規約
+              </a>
+              <span className="text-[11px] text-slate-300">|</span>
+              <a href="/privacy.html" target="_blank" rel="noopener noreferrer" className="text-[11px] font-bold text-slate-400 hover:text-indigo-500 transition-colors">
+                プライバシーポリシー
+              </a>
+            </div>
+
           </div>
         </div>
       </div>
