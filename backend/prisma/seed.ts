@@ -313,7 +313,6 @@ async function main() {
 
   console.log('🟢 Database seeding completed successfully!');
 }
-}
 
 main()
   .catch((e) => {
