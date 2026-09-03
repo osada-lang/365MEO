@@ -19,7 +19,7 @@ async function main() {
       data: {
         id: 'admin-365meo-uuid',
         name: '365MEOシステム管理運営本部',
-        email: 'admin@365meo.com',
+        email: 'gbp.suport365@gmail.com',
         password: adminPassword,
         role: 'ADMIN',
         google_location_id: null,
