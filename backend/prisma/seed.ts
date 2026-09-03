@@ -5,6 +5,10 @@ const prisma = new PrismaClient();
 async function main() {
   console.log('🌱 Starting database seeding (safe mode)...');
 
+  // Load passwords dynamically from environment variables with safe defaults
+  const adminPassword = process.env.MASTER_ADMIN_PASSWORD || 'password';
+  const ownerPassword = process.env.MASTER_OWNER_PASSWORD || 'password';
+
   // Check if admin shop exists
   const adminExists = await prisma.shop.findUnique({
     where: { id: 'admin-365meo-uuid' }
@@ -16,7 +20,7 @@ async function main() {
         id: 'admin-365meo-uuid',
         name: '365MEOシステム管理運営本部',
         email: 'admin@365meo.com',
-        password: 'password',
+        password: adminPassword,
         role: 'ADMIN',
         google_location_id: null,
         google_drive_folder_id: null,
@@ -41,7 +45,7 @@ async function main() {
         id: '365meo-shop-uuid',
         name: '株式会社３６５',
         email: '365meo@gmail.com',
-        password: 'Tody-12191019',
+        password: ownerPassword,
         role: 'OWNER',
         agency_name: '365MEO',
         google_location_id: 'locations/7613471938029191960',

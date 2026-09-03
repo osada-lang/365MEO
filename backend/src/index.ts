@@ -2221,12 +2221,13 @@ app.listen(port, () => {
 
       if (!liveThanxExists) {
         console.log('✨ Seeding live "株式会社３６５" OWNER account for the first time...');
+        const ownerPassword = process.env.MASTER_OWNER_PASSWORD || 'password';
         await prisma.shop.create({
           data: {
             id: targetThanxId,
             name: '株式会社３６５',
             email: '365meo@gmail.com',
-            password: 'Tody-12191019',
+            password: ownerPassword,
             role: 'OWNER',
             agency_name: '365MEO',
             google_location_id: 'locations/7613471938029191960',
