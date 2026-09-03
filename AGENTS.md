@@ -68,6 +68,6 @@ npm run build
 各環境変数についての詳細は、プロジェクトルートおよび `backend/` 配下にある `.env.example` ファイルを参照してください。
 特に以下のキーは３６５社から回収して設定する必要があります。
 * `DATABASE_URL`: PostgreSQLデータベース接続文字列
-* `GEMINI_API_KEY`: Google AI Studio APIキー
+* `CLAUDE_API_KEY`: Anthropic Claude APIキー
 * `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` / `GOOGLE_REFRESH_TOKEN`: GCP OAuth 2.0 接続情報
 * `LINE_CHANNEL_ACCESS_TOKEN` / `LINE_CHANNEL_SECRET`: LINE Messaging API 接続情報
