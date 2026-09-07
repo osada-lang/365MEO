@@ -938,6 +938,11 @@ export default function App() {
     // Group shopsList by agency name
     const groupedShops: { [agency: string]: ShopProfile[] } = {};
 
+    // 🌟 Always pre-populate 365MEO (direct contract) at the top of the list so it stays visible even with 0 shops
+    if (!shopSearchQuery || '365meo'.includes(shopSearchQuery.toLowerCase()) || '直営店'.includes(shopSearchQuery)) {
+      groupedShops['365MEO（直営店契約）'] = [];
+    }
+
     // For ADMIN role, pre-populate all existing agencies so they appear even if they have 0 shops
     if (userRole === 'ADMIN') {
       agenciesList.forEach((agency) => {
