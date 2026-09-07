@@ -5,7 +5,7 @@
   "main": "dist/index.js",
   "scripts": {
     "dev": "nodemon --watch src --ext ts --exec tsx src/index.ts",
-    "build": "npx prisma generate && tsc && npx prisma db push && npx prisma db seed && npx tsx prisma/update_365meo_settings.ts",
+    "build": "npx prisma generate && tsc && npx prisma db push && npx prisma db seed",
     "start": "node dist/index.js",
     "test:claude": "tsx src/tests/test-claude.ts",
     "test:line": "tsx src/tests/test-line.ts",
