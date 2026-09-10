@@ -15,10 +15,10 @@ if (!clientID || !clientSecret) {
   process.exit(1);
 }
 
-// Scopes required for GBP and Google Drive (Read-only)
+// Scopes required for GBP and Google Drive (Full)
 const scopes = [
   'https://www.googleapis.com/auth/business.manage', // GBP management
-  'https://www.googleapis.com/auth/drive.readonly'  // Google Drive read stock images
+  'https://www.googleapis.com/auth/drive'           // Google Drive full access to manage stock images
 ];
 
 const oauth2Client = new google.auth.OAuth2(

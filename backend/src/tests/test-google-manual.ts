@@ -18,7 +18,7 @@ if (!clientID || !clientSecret) {
 
 const scopes = [
   'https://www.googleapis.com/auth/business.manage',
-  'https://www.googleapis.com/auth/drive.readonly'
+  'https://www.googleapis.com/auth/drive'
 ];
 
 const oauth2Client = new google.auth.OAuth2(
