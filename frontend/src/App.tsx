@@ -2152,7 +2152,7 @@ export default function App() {
                     {/* QR Code */}
                     <div className="bg-white p-2.5 rounded-xl border border-slate-200/60 shrink-0 shadow-sm flex flex-col items-center justify-center">
                       <img
-                        src="https://api.qrserver.com/v1/create-qr-code/?size=100x100&data=https://lin.ee/oNC33Rq"
+                        src="https://api.qrserver.com/v1/create-qr-code/?size=100x100&data=https://lin.ee/uO1XrBT"
                         alt="LINE QR"
                         className="w-[100px] h-[100px]"
                       />
