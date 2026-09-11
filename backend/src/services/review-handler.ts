@@ -182,7 +182,7 @@ export class ReviewHandlerService {
     try {
       const response = await this.anthropic.messages.create({
         model: 'claude-sonnet-5',
-        max_tokens: 400,
+        max_tokens: 1000,
         messages: [{ role: 'user', content: prompt }]
       });
 
@@ -233,7 +233,7 @@ export class ReviewHandlerService {
     try {
       const response = await this.anthropic.messages.create({
         model: 'claude-sonnet-5',
-        max_tokens: 400,
+        max_tokens: 1000,
         messages: [{ role: 'user', content: prompt }]
       });
 
@@ -291,7 +291,7 @@ export class ReviewHandlerService {
     try {
       const response = await this.anthropic.messages.create({
         model: 'claude-sonnet-5',
-        max_tokens: 400,
+        max_tokens: 1000,
         messages: [{ role: 'user', content: prompt }]
       });
 
