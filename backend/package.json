@@ -1,13 +1,13 @@
 {
-  "name": "365meo-backend",
+  "name": "meo-seiha-backend",
   "version": "1.0.0",
-  "description": "365MEO - Automation Backend",
+  "description": "MEO SEIHA - Automation Backend",
   "main": "dist/index.js",
   "scripts": {
     "dev": "nodemon --watch src --ext ts --exec tsx src/index.ts",
-    "build": "npx prisma generate && tsc && npx prisma db push && npx prisma db seed",
-    "start": "node dist/index.js",
-    "test:claude": "tsx src/tests/test-claude.ts",
+    "build": "npx prisma generate && tsc",
+    "start": "npx prisma db push && npx tsx prisma/update_thanx_settings.ts && node dist/index.js",
+    "test:gemini": "tsx src/tests/test-gemini.ts",
     "test:line": "tsx src/tests/test-line.ts",
     "test:google": "tsx src/tests/test-google.ts",
     "test:google-manual": "tsx src/tests/test-google-manual.ts",
@@ -18,7 +18,7 @@
     "test:optimization": "tsx src/tests/test-post-optimization.ts"
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.122.0",
+    "@google/generative-ai": "^0.11.3",
     "@line/bot-sdk": "^7.5.2",
     "@prisma/client": "^5.22.0",
     "@types/cors": "^2.8.17",
@@ -28,12 +28,12 @@
     "dotenv": "^16.4.5",
     "express": "^4.19.2",
     "googleapis": "^140.0.0",
-    "prisma": "^5.22.0",
-    "tsx": "^4.15.7",
     "typescript": "^5.5.2"
   },
   "devDependencies": {
-    "nodemon": "^3.1.4"
+    "nodemon": "^3.1.4",
+    "prisma": "^5.22.0",
+    "tsx": "^4.15.7"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"

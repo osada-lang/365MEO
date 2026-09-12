@@ -46,7 +46,7 @@ app.post('/webhook', middleware({ channelSecret: config.channelSecret }), (req: 
       // Reply back to user
       client.replyMessage(event.replyToken, {
         type: 'text',
-        text: `365MEOシステムがメッセージを受信しました！\nあなたのユーザーIDは以下です：\n${userId}`
+        text: `MEO SEIHAシステムがメッセージを受信しました！\nあなたのユーザーIDは以下です：\n${userId}`
       }).catch(err => {
         console.error('❌ Failed to send reply message:', err);
       });
@@ -69,7 +69,7 @@ app.get('/test-push', async (req: Request, res: Response) => {
   try {
     const result = await client.pushMessage(userId, {
       type: 'text',
-      text: '🔔【365MEO 連携テスト】\nLINE Messaging API との接続疎通テストに成功しました！このチャネルから店舗オーナーへの緊急アラートが配信されます。'
+      text: '🔔【MEO SEIHA 連携テスト】\nLINE Messaging API との接続疎通テストに成功しました！このチャネルから店舗オーナーへの緊急アラートが配信されます。'
     });
     
     console.log('🟢 Push message sent successfully!');
@@ -92,7 +92,7 @@ app.listen(port, () => {
     console.log(`🚀 Found LINE_USER_ID in .env. Attempting automatic push test...`);
     client.pushMessage(autoUserId, {
       type: 'text',
-      text: '🔔【365MEO 連携テスト】\nサーバー起動時の自動疎通テストに成功しました！'
+      text: '🔔【MEO SEIHA 連携テスト】\nサーバー起動時の自動疎通テストに成功しました！'
     })
     .then(() => console.log('🟢 Automatic push test succeeded!'))
     .catch(err => console.error('❌ Automatic push test failed:', err));

@@ -5,22 +5,18 @@ const prisma = new PrismaClient();
 async function main() {
   console.log('🌱 Starting database seeding (safe mode)...');
 
-  // Load passwords dynamically from environment variables with safe defaults
-  const adminPassword = process.env.MASTER_ADMIN_PASSWORD || 'password';
-  const ownerPassword = process.env.MASTER_OWNER_PASSWORD || 'password';
-
   // Check if admin shop exists
   const adminExists = await prisma.shop.findUnique({
-    where: { id: 'admin-365meo-uuid' }
+    where: { id: 'admin-seiha-uuid' }
   });
 
   if (!adminExists) {
     await prisma.shop.create({
       data: {
-        id: 'admin-365meo-uuid',
-        name: '365MEOシステム管理運営本部',
-        email: 'gbp.suport365@gmail.com',
-        password: adminPassword,
+        id: 'admin-seiha-uuid',
+        name: 'MEO SEIHAシステム管理運営本部',
+        email: 'admin@meo-seiha.com',
+        password: 'password',
         role: 'ADMIN',
         google_location_id: null,
         google_drive_folder_id: null,
@@ -31,162 +27,6 @@ async function main() {
       },
     });
     console.log('👮 Created Admin User.');
-  }
-
-  // Seeding 本番店舗: （有）一期自動車
-  const targetIchigoId = 'ichigo-jidousha-uuid';
-  const ichigoExists = await prisma.shop.findUnique({
-    where: { id: targetIchigoId }
-  });
-
-  if (!ichigoExists) {
-    console.log('✨ Seeding live "（有）一期自動車" OWNER account for the first time...');
-    const ichigoShop = await prisma.shop.create({
-      data: {
-        id: targetIchigoId,
-        name: '（有）一期自動車',
-        email: 'ichigobankinseibi@gmail.com',
-        password: 'ichigobankinseibi@gmail.com', // ユーザー様がログイン後に変更可能です
-        role: 'OWNER',
-        agency_name: '365MEO', // 直営店として登録します
-        google_location_id: 'locations/18248185576262604361',
-        google_drive_folder_id: '1fS5jtVSjLT7sJYW_6VHJtutd6nAL1IEQ',
-        line_user_id: null,
-        reply_active: true,
-        post_active: true,
-        custom_review_prompt: '（有）一期自動車のカスタマーサポートとして、親しみやすく丁寧なトーンで返信を作成してください。',
-      }
-    });
-
-    await prisma.shopKeywords.create({
-      data: {
-        shop_id: ichigoShop.id,
-        main_keywords: JSON.stringify([]), // 空のキーワードで初期化します
-        sub_keywords: JSON.stringify([]),  // 空のキーワードで初期化します
-        fixed_footer: '（有）一期自動車',   // 最小構成のフッター
-        custom_prompt: '親しみやすく信頼感のあるトーンで発信してください。',
-        hp_url: null,
-        tabelog_url: null,
-        hotpepper_url: null,
-        gurunavi_url: null,
-        gbp_action_url: 'https://maps.app.goo.gl/LiRYKemFZ1h4RA9b9',
-        post_time_hour: 12,
-      }
-    });
-
-    // テンプレデータの投入
-    const defaultStar3 = [
-      'ご来店および貴重なご意見をいただきありがとうございます。ご指摘いただいた点を真摯に受け止め、今後のサービス向上に役立ててまいります。',
-      'この度はご来店いただきありがとうございました。至らない点があったことをお詫びするとともに、スタッフ一同、よりご満足いただけるお店づくりに努めてまいります。',
-      'ご感想をお寄せいただきありがとうございます。いただいたご意見を店舗全体で共有し、改善を重ね要領よく対応してまいります。またのご来店をお待ちしております。',
-      'ご来店ありがとうございました。お褒めいただいた点も、ご指摘いただいた点も大変参考になります。今後ともよろしくお願いいたします。',
-      'ご意見ありがとうございます。次回ご来店の際には、より良いサービスを提供できるよう、スタッフ教育や設備改善に取り組んでまいります。'
-    ];
-
-    const defaultStar4 = [
-      'この度はご来店いただき、また高評価をありがとうございます！ご満足いただけて大変嬉しく思います。またのお越しを心よりお待ちしております。',
-      'お忙しい中、嬉しい口コミをご投稿いただき誠にありがとうございます。これからも素敵なお時間を提供できるよう、努力を続けてまいります。',
-      'ご来店および素晴らしい評価をありがとうございます。お食事やお店の雰囲気を楽しんでいただけて何よりです。次回のご来店もお待ちしております。',
-      '大変嬉しいお声をいただき、スタッフ一同の励みになります！次回はさらにご満足いただけるよう、心を込めておもてなしいたします。',
-      'ご投稿ありがとうございます！高評価をいただき感謝申し上げます。今後とも変わらぬご愛顧のほど、よろしくお願い申し上げます。'
-    ];
-
-    const defaultStar5 = [
-      'この度は最高評価をいただき、誠にありがとうございます！本当に嬉しいお言葉を励みに、これからも最上のサービスを追求してまいります。',
-      'ご来店いただき、またお褒めの言葉をいただき大変光栄です！また次回も「来てよかった」と思っていただけるよう、全力を尽くします。',
-      '素晴らしい評価をありがとうございます！当店での時間が素敵な思い出となったのであれば幸いです。またのご来店を心よりお待ちしております！',
-      'スタッフ全員が笑顔になる最高の口コミをありがとうございます！いただいたエネルギーを糧に、次回も完璧な施術・サービスを提供します。',
-      'ご来店ありがとうございました！星5つの満点評価をいただき感謝の極みです。これからもお客様に愛され続けるお店を目指して頑張ります！'
-    ];
-
-    await prisma.replyTemplates.create({
-      data: {
-        shop_id: ichigoShop.id,
-        templates_star3: JSON.stringify(defaultStar3),
-        templates_star4: JSON.stringify(defaultStar4),
-        templates_star5: JSON.stringify(defaultStar5),
-      }
-    });
-
-    console.log('🔑 Created live "（有）一期自動車" OWNER account seeds successfully.');
-  }
-
-  // Seeding 本番店舗: 株式会社陽向
-  const targetHinataId = 'hinata-shop-uuid';
-  const hinataExists = await prisma.shop.findUnique({
-    where: { id: targetHinataId }
-  });
-
-  if (!hinataExists) {
-    console.log('✨ Seeding live "株式会社陽向" OWNER account for the first time...');
-    const hinataShop = await prisma.shop.create({
-      data: {
-        id: targetHinataId,
-        name: '株式会社陽向',
-        email: 'hinata.ry.2314@gmail.com',
-        password: 'hinata.ry.2314@gmail.com', // ユーザー様がログイン後に変更可能です
-        role: 'OWNER',
-        agency_name: '365MEO', // 直営店として登録します
-        google_location_id: 'locations/9086385394219336208',
-        google_drive_folder_id: '1kodi_iDiI7lfNdRh8t03DHk8b2PZQuGA',
-        line_user_id: null,
-        reply_active: true,
-        post_active: true,
-        custom_review_prompt: '株式会社陽向のカスタマーサポートとして、親しみやすく丁寧なトーンで返信を作成してください。',
-      }
-    });
-
-    await prisma.shopKeywords.create({
-      data: {
-        shop_id: hinataShop.id,
-        main_keywords: JSON.stringify([]), // 空のキーワードで初期化します
-        sub_keywords: JSON.stringify([]),  // 空のキーワードで初期化します
-        fixed_footer: '株式会社陽向',       // 最小構成のフッター
-        custom_prompt: '親しみやすく信頼感のあるトーンで発信してください。',
-        hp_url: null,
-        tabelog_url: null,
-        hotpepper_url: null,
-        gurunavi_url: null,
-        gbp_action_url: 'https://share.google/ljdr6ZVYQjvG3q9QT',
-        post_time_hour: 12,
-      }
-    });
-
-    // テンプレデータの投入
-    const defaultStar3 = [
-      'ご来店および貴重なご意見をいただきありがとうございます。ご指摘いただいた点を真摯に受け止め、今後のサービス向上に役立ててまいります。',
-      'この度はご来店いただきありがとうございました。至らない点があったことをお詫びするとともに、スタッフ一同、よりご満足いただけるお店づくりに努めてまいります。',
-      'ご感想をお寄せいただきありがとうございます。いただいたご意見を店舗全体で共有し、改善を重ね要領よく対応してまいります。またのご来店をお待ちしております。',
-      'ご来店ありがとうございました。お褒めいただいた点も、ご指摘いただいた点も大変参考になります。今後ともよろしくお願いいたします。',
-      'ご意見ありがとうございます。次回ご来店の際には、より良いサービスを提供できるよう、スタッフ教育や設備改善に取り組んでまいります。'
-    ];
-
-    const defaultStar4 = [
-      'この度はご来店いただき、また高評価をありがとうございます！ご満足いただけて大変嬉しく思います。またのお越しを心よりお待ちしております。',
-      'お忙しい中、嬉しい口コミをご投稿いただき誠にありがとうございます。これからも素敵なお時間を提供できるよう、努力を続けてまいります。',
-      'ご来店および素晴らしい評価をありがとうございます。お食事やお店の雰囲気を楽しんでいただけて何よりです。次回のご来店もお待ちしております。',
-      '大変嬉しいお声をいただき、スタッフ一同の励みになります！次回はさらにご満足いただけるよう、心を込めておもてなしいたします。',
-      'ご投稿ありがとうございます！高評価をいただき感謝申し上げます。今後とも変わらぬご愛顧のほど、よろしくお願い申し上げます。'
-    ];
-
-    const defaultStar5 = [
-      'この度は最高評価をいただき、誠にありがとうございます！本当に嬉しいお言葉を励みに、これからも最上のサービスを追求してまいります。',
-      'ご来店いただき、またお褒めの言葉をいただき大変光栄です！また次回も「来てよかった」と思っていただけるよう、全力を尽くします。',
-      '素晴らしい評価をありがとうございます！当店での時間が素敵な思い出となったのであれば幸いです。またのご来店を心よりお待ちしております！',
-      'スタッフ全員が笑顔になる最高の口コミをありがとうございます！いただいたエネルギーを糧に、次回も完璧な施術・サービスを提供します。',
-      'ご来店ありがとうございました！星5つの満点評価をいただき感謝の極みです。これからもお客様に愛され続けるお店を目指して頑張ります！'
-    ];
-
-    await prisma.replyTemplates.create({
-      data: {
-        shop_id: hinataShop.id,
-        templates_star3: JSON.stringify(defaultStar3),
-        templates_star4: JSON.stringify(defaultStar4),
-        templates_star5: JSON.stringify(defaultStar5),
-      }
-    });
-
-    console.log('🔑 Created live "株式会社陽向" OWNER account seeds successfully.');
   }
 
   // Seeding Demo Agency X and Avenir Hair demo store

@@ -915,16 +915,6 @@ export default function App() {
               </div>
             </form>
 
-            <div className="flex items-center justify-center gap-4 border-t border-slate-100 pt-5 text-center">
-              <a href="/terms.html" target="_blank" rel="noopener noreferrer" className="text-[11px] font-bold text-slate-400 hover:text-indigo-500 transition-colors">
-                利用規約
-              </a>
-              <span className="text-[11px] text-slate-300">|</span>
-              <a href="/privacy.html" target="_blank" rel="noopener noreferrer" className="text-[11px] font-bold text-slate-400 hover:text-indigo-500 transition-colors">
-                プライバシーポリシー
-              </a>
-            </div>
-
           </div>
         </div>
       </div>
@@ -937,11 +927,6 @@ export default function App() {
   if (token && currentShop && (userRole === 'ADMIN' || userRole === 'AGENCY') && !isViewingShop) {
     // Group shopsList by agency name
     const groupedShops: { [agency: string]: ShopProfile[] } = {};
-
-    // 🌟 Always pre-populate 365MEO (direct contract) at the top of the list so it stays visible even with 0 shops
-    if (!shopSearchQuery || '365meo'.includes(shopSearchQuery.toLowerCase()) || '直営店'.includes(shopSearchQuery)) {
-      groupedShops['365MEO（直営店契約）'] = [];
-    }
 
     // For ADMIN role, pre-populate all existing agencies so they appear even if they have 0 shops
     if (userRole === 'ADMIN') {
@@ -2152,7 +2137,7 @@ export default function App() {
                     {/* QR Code */}
                     <div className="bg-white p-2.5 rounded-xl border border-slate-200/60 shrink-0 shadow-sm flex flex-col items-center justify-center">
                       <img
-                        src="https://api.qrserver.com/v1/create-qr-code/?size=100x100&data=https://lin.ee/uO1XrBT"
+                        src="https://api.qrserver.com/v1/create-qr-code/?size=100x100&data=https://lin.ee/oNC33Rq"
                         alt="LINE QR"
                         className="w-[100px] h-[100px]"
                       />

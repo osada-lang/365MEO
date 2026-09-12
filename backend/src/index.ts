@@ -7,7 +7,6 @@ import { google } from 'googleapis';
 import { Client } from '@line/bot-sdk';
 import { prisma } from './services/db';
 import { ReviewHandlerService, ReviewEvent } from './services/review-handler';
-import Anthropic from '@anthropic-ai/sdk';
 
 // Load .env
 dotenv.config({ path: path.join(__dirname, '../.env') });
@@ -149,7 +148,7 @@ app.post('/api/line/webhook', async (req, res) => {
           try {
             await lineClient.pushMessage(userId, {
               type: 'text',
-              text: `🟢 365MEO連携用のLINEアカウントを検出しました！\n\nニックネーム: 「${displayName}」様\n\n管理画面に戻り、「このアカウントを連携する」ボタンを押して登録を完了してください。`,
+              text: `🟢 MEO SEIHA連携用のLINEアカウントを検出しました！\n\nニックネーム: 「${displayName}」様\n\n管理画面に戻り、「このアカウントを連携する」ボタンを押して登録を完了してください。`,
             });
           } catch (replyErr: any) {
             console.warn('⚠️ Failed to send auto-reply to user via pushMessage (might be a free tier limit or developer console permissions):', replyErr.message || replyErr);
@@ -1254,14 +1253,14 @@ async function generateSingleDraft(
     selectedSubKeywords.push(...shuffled.slice(0, Math.min(count, shuffled.length)));
   }
 
-  const claudeApiKey = process.env.CLAUDE_API_KEY;
-  if (!claudeApiKey) {
-    throw new Error('Claude APIキーが設定されていません。');
+  const geminiApiKey = process.env.GEMINI_API_KEY;
+  if (!geminiApiKey) {
+    throw new Error('Gemini APIキーが設定されていません。');
   }
 
-  const anthropic = new Anthropic({
-    apiKey: claudeApiKey,
-  });
+  const { GoogleGenerativeAI } = require('@google/generative-ai');
+  const genAI = new GoogleGenerativeAI(geminiApiKey);
+  const model = genAI.getGenerativeModel({ model: 'gemini-3.6-flash' });
 
   // 日替わりで異なる「検索意図・文脈テーマ」を決定 (dayIndexを利用)
   const themes = [
@@ -1358,21 +1357,20 @@ async function generateSingleDraft(
 
   let generatedText = '';
   try {
-    const response = await anthropic.messages.create({
-      model: 'claude-sonnet-5',
-      max_tokens: 1500,
-      messages: [{ role: 'user', content: prompt }]
-    });
-
-    generatedText = response.content
-      .filter(block => block.type === 'text')
-      .map(block => block.text)
-      .join('\n')
-      .trim()
-      .replace(/```/g, '');
+    const result = await model.generateContent(prompt);
+    const response = await result.response;
+    generatedText = response.text().trim().replace(/```/g, '');
   } catch (err: any) {
-    console.error('❌ Claude generation failed in generateSingleDraft:', err.message || err);
-    throw err;
+    console.warn('⚠️ gemini-3.6-flash failed or was under heavy load. Falling back to stable gemini-3.5-flash:', err.message || err);
+    try {
+      const fallbackModel = genAI.getGenerativeModel({ model: 'gemini-3.5-flash' });
+      const result = await fallbackModel.generateContent(prompt);
+      const response = await result.response;
+      generatedText = response.text().trim().replace(/```/g, '');
+    } catch (fallbackErr: any) {
+      console.error('❌ Both gemini-3.6-flash and gemini-3.5-flash failed:', fallbackErr.message || fallbackErr);
+      throw fallbackErr;
+    }
   }
 
   return {
@@ -2023,7 +2021,7 @@ const alreadyPostedToday = new Set<string>();
 // ⏱️ Background Automated Scheduler (Hourly execution check)
 // ==============================================================================
 async function runBackgroundScheduler() {
-  console.log(`\n⏰ [${new Date().toLocaleTimeString()}] Running 365MEO background scheduler cycle...`);
+  console.log(`\n⏰ [${new Date().toLocaleTimeString()}] Running MEO SEIHA background scheduler cycle...`);
 
   const clientID = process.env.GOOGLE_CLIENT_ID;
   const clientSecret = process.env.GOOGLE_CLIENT_SECRET;
@@ -2185,7 +2183,7 @@ app.post('/api/batch/trigger-scheduler', async (req, res) => {
 // Start express server
 app.listen(port, () => {
   console.log(`\n================================================================================`);
-  console.log(`🚀 365MEO - Express API Server running on: http://localhost:${port}`);
+  console.log(`🚀 MEO SEIHA - Express API Server running on: http://localhost:${port}`);
   console.log(`📅 Started on: ${new Date().toLocaleString()}`);
   console.log(`================================================================================\n`);
 
@@ -2211,9 +2209,11 @@ app.listen(port, () => {
     }
   }, 15 * 1000);
 
-  // Master Account (gbp.suport365@gmail.com) Automatic Initialization / Sync
+  // Master Account (thanxcreate.gbp@gmail.com) Automatic Initialization / Sync
   setTimeout(async () => {
     try {
+      console.log('👤 Checking Master Account (thanxcreate.gbp@gmail.com) initialization...');
+      
       // Safe purge existing demo agency and demo store
       const targetAgencyId = 'demo-agency-uuid';
       const targetAvenirId = 'demo-store-uuid';
@@ -2419,10 +2419,10 @@ app.listen(port, () => {
       console.log('✅ Agency X and Avenir Hair demo data have been successfully seeded!');
 
       // Load secure master admin password from environment variable with a safe dynamic fallback
-      const password = process.env.MASTER_ADMIN_PASSWORD || 'Suport365-MEO-Voice';
+      const password = process.env.MASTER_ADMIN_PASSWORD || 'password';
 
       const masterAccount = await prisma.shop.upsert({
-        where: { email: 'gbp.suport365@gmail.com' },
+        where: { email: 'thanxcreate.gbp@gmail.com' },
         update: {
           password: password,
           role: 'ADMIN',
@@ -2431,8 +2431,8 @@ app.listen(port, () => {
           google_location_id: 'locations/7613471938029191960',
         },
         create: {
-          name: '365MEO運営本部',
-          email: 'gbp.suport365@gmail.com',
+          name: 'MEO SEIHA運営本部',
+          email: 'thanxcreate.gbp@gmail.com',
           password: password,
           role: 'ADMIN',
           post_active: false,

@@ -1,4 +1,4 @@
-import Anthropic from '@anthropic-ai/sdk';
+import { GoogleGenerativeAI } from '@google/generative-ai';
 import { Client } from '@line/bot-sdk';
 import * as dotenv from 'dotenv';
 import * as path from 'path';
@@ -27,7 +27,7 @@ export interface ReviewResponseResult {
 
 export class ReviewHandlerService {
   private lineClient: Client | null = null;
-  private anthropic: Anthropic | null = null;
+  private genAI: GoogleGenerativeAI | null = null;
 
   // 星3〜5用の5パターンの自動返信定型文（AIコスト0円で高評価にランダム返信）
   private static staticTemplates = [
@@ -49,12 +49,10 @@ export class ReviewHandlerService {
       });
     }
 
-    // Initialize Claude (Anthropic SDK)
-    const claudeApiKey = process.env.CLAUDE_API_KEY;
-    if (claudeApiKey) {
-      this.anthropic = new Anthropic({
-        apiKey: claudeApiKey,
-      });
+    // Initialize Gemini (using gemini-2.5-flash which we verified as active in 2026)
+    const geminiApiKey = process.env.GEMINI_API_KEY;
+    if (geminiApiKey) {
+      this.genAI = new GoogleGenerativeAI(geminiApiKey);
     }
   }
 
@@ -72,8 +70,8 @@ export class ReviewHandlerService {
     console.log(`\n📬 [新着口コミ検知] 店舗: 「${storeName}」 | 投稿者: ${review.reviewerName} | 星数: ★${review.starRating}`);
     console.log(`💬 コメント: "${review.comment || '(本文なし)'}"`);
 
-    if (!this.anthropic) {
-      throw new Error('❌ Claude API is not initialized. Check CLAUDE_API_KEY in .env');
+    if (!this.genAI) {
+      throw new Error('❌ Gemini API is not initialized. Check GEMINI_API_KEY in .env');
     }
 
     // --- 星3〜5（中・高評価）: AIで魅力的な感謝・アピール返信文を作成 ---
@@ -149,12 +147,10 @@ export class ReviewHandlerService {
   }
 
   /**
-   * Claudeを使用して、高評価に対する感謝とアピールを兼ねた魅力的な返信文を自動生成します
+   * Geminiを使用して、高評価に対する感謝とアピールを兼ねた魅力的な返信文を自動生成します
    */
   private async generatePositiveDraft(review: ReviewEvent, storeName: string, customPrompt?: string): Promise<string> {
-    if (!this.anthropic) {
-      return 'この度は温かい評価と口コミのご投稿、誠にありがとうございます！お客様からのお褒めの言葉が、スタッフ一同大変励みになります。これからもより一層喜んでいただけるようサービス向上に努めてまいります。またのご来店を心よりお待ちしております！';
-    }
+    const model = this.genAI!.getGenerativeModel({ model: 'gemini-3.6-flash' });
 
     const prompt = `
       あなたは店舗「${storeName}」のオーナー代理として、お客様から届いたGoogleマップ上の高評価口コミ（★${review.starRating}）に対して、返信用のお礼メッセージ下書きを作成してください。
@@ -167,7 +163,7 @@ export class ReviewHandlerService {
       2. コメント本文がある場合の対応（自然な共感と魅力の調和）:
          お客様の口コミに具体的なコメント本文がある場合は、褒められた内容（接客、施術、空間、技術など）に対して自然に反応し共感してください。
       3. コメント本文がない場合の対応（誠実な短文・宣伝禁止）:
-         星評価のみの場合は、ご評価いただいたことに対するシンプルな感謝 of 言ーブと、次回ご来店の際にもよりご満足いただけるよう努める旨の丁寧な姿勢を述べて完結させてください。強引な売込や不自然なキーワードは含めないでください。
+         星評価のみの場合は、ご評価いただいたことに対するシンプルな感謝 of 言葉と、次回ご来店の際にもよりご満足いただけるよう努める旨の丁寧な姿勢を述べて完結させてください。強引な売込や不自然なキーワードは含めないでください。
       4. キーワードの不自然な多用禁止:
          文脈に全く合わない過度なSEOキーワードの詰め込みは禁止します。あくまでも自然な文章のなかで、店舗のこだわりや魅力を調和させて表現してください。
       5. 絵文字・記号の適度な使用:
@@ -180,32 +176,28 @@ export class ReviewHandlerService {
     `;
 
     try {
-      const response = await this.anthropic.messages.create({
-        model: 'claude-sonnet-5',
-        max_tokens: 1000,
-        messages: [{ role: 'user', content: prompt }]
-      });
-
-      const responseText = response.content
-        .filter(block => block.type === 'text')
-        .map(block => block.text)
-        .join('\n')
-        .trim();
-
-      return responseText;
+      const result = await model.generateContent(prompt);
+      const response = await result.response;
+      return response.text().trim();
     } catch (error: any) {
-      console.error('❌ Claude generation failed in generatePositiveDraft:', error.message || error);
-      return 'この度は温かい評価と口コミのご投稿、誠にありがとうございます！お客様からのお褒めの言葉が、スタッフ一同大変励みになります。これからもより一層喜んでいただけるようサービス向上に努めてまいります。またのご来店を心よりお待ちしております！';
+      console.warn('⚠️ gemini-3.6-flash failed in generatePositiveDraft, trying gemini-3.5-flash:', error.message || error);
+      try {
+        const fallbackModel = this.genAI!.getGenerativeModel({ model: 'gemini-3.5-flash' });
+        const result = await fallbackModel.generateContent(prompt);
+        const response = await result.response;
+        return response.text().trim();
+      } catch (fallbackErr: any) {
+        console.error('❌ Both gemini-3.6-flash and gemini-3.5-flash failed in generatePositiveDraft:', fallbackErr.message || fallbackErr);
+        return 'この度は温かい評価と口コミのご投稿、誠にありがとうございます！お客様からのお褒めの言葉が、スタッフ一同大変励みになります。これからもより一層喜んでいただけるようサービス向上に努めてまいります。またのご来店を心よりお待ちしております！';
+      }
     }
   }
 
   /**
-   * Claudeを使用して、丁寧で真摯な謝罪下書き文を自動生成します（制約事項遵守）
+   * Geminiを使用して、丁寧で真摯な謝罪下書き文を自動生成します（制約事項遵守）
    */
   private async generateApologyDraft(review: ReviewEvent, storeName: string, customPrompt?: string): Promise<string> {
-    if (!this.anthropic) {
-      return 'この度は当店のご利用に際し、ご満足のいくサービスを提供できず、不快な思いをさせてしまいましたことを深くお詫び申し上げます。今後、このようなことがないようスタッフへの指導とサービスの改善に努めてまいります。';
-    }
+    const model = this.genAI!.getGenerativeModel({ model: 'gemini-3.6-flash' });
 
     const prompt = `
       あなたは店舗「${storeName}」のオーナー代理として、お客様から届いたGoogleマップ上の低評価口コミ（★${review.starRating}）に対して、返信用のお詫びメッセージ下書きを作成してください。
@@ -231,30 +223,25 @@ export class ReviewHandlerService {
     `;
 
     try {
-      const response = await this.anthropic.messages.create({
-        model: 'claude-sonnet-5',
-        max_tokens: 1000,
-        messages: [{ role: 'user', content: prompt }]
-      });
-
-      const responseText = response.content
-        .filter(block => block.type === 'text')
-        .map(block => block.text)
-        .join('\n')
-        .trim();
-
-      return responseText;
+      const result = await model.generateContent(prompt);
+      const response = await result.response;
+      return response.text().trim();
     } catch (error: any) {
-      console.error('❌ Claude generation failed in generateApologyDraft:', error.message || error);
-      return 'この度は当店のご利用に際し、ご満足のいくサービスを提供できず、不快な思いをさせてしまいましたことを深くお詫び申し上げます。今後、このようなことがないようスタッフへの指導とサービスの改善に努めてまいります。';
+      console.warn('⚠️ gemini-3.6-flash failed in generateApologyDraft, trying gemini-3.5-flash:', error.message || error);
+      try {
+        const fallbackModel = this.genAI!.getGenerativeModel({ model: 'gemini-3.5-flash' });
+        const result = await fallbackModel.generateContent(prompt);
+        const response = await result.response;
+        return response.text().trim();
+      } catch (fallbackErr: any) {
+        console.error('❌ Both gemini-3.6-flash and gemini-3.5-flash failed in generateApologyDraft:', fallbackErr.message || fallbackErr);
+        return 'この度は当店のご利用に際し、ご満足のいくサービスを提供できず、不快な思いをさせてしまいましたことを深くお詫び申し上げます。今後、このようなことがないようスタッフへの指導 and サービスの改善に努めてまいります。';
+      }
     }
   }
 
   /**
    * Geminiを使用して、店主からの特定指示（directive）に基づいて、謝罪下書き文を書き直します（再生成）
-   */
-  /**
-   * Claudeを使用して、店主からの特定指示（directive）に基づいて、お礼・お詫び下書き文を書き直します（再生成）
    */
   public async generateCustomApologyDraft(
     review: { starRating: number; comment: string | null },
@@ -262,9 +249,11 @@ export class ReviewHandlerService {
     customPrompt?: string,
     directive?: string
   ): Promise<string> {
-    if (!this.anthropic) {
-      throw new Error('❌ Claude API is not initialized. Check CLAUDE_API_KEY in .env');
+    if (!this.genAI) {
+      throw new Error('❌ Gemini API is not initialized. Check GEMINI_API_KEY in .env');
     }
+
+    const model = this.genAI.getGenerativeModel({ model: 'gemini-3.6-flash' });
 
     const isLowRating = review.starRating <= 2;
 
@@ -277,7 +266,7 @@ export class ReviewHandlerService {
       【基本生成ルール】
       1. ${isLowRating ? '真摯な謝罪：不快な思いをさせてしまったことをオーナーとして真摯にお詫びしてください。' : '誠実な感謝：高評価をいただいたことに対する喜びと感謝を誠実に伝えてください。'}
       2. 具体的な口コミコメント（褒め言葉・指摘点）があれば、それに自然に反応し、寄り添った返信にしてください。
-      3. ${isLowRating ? '感嘆符・絵文字・装飾は【一切完全禁止】です。すべて丁寧な句読点（「。」「、」）のみにしてください。' : '感謝の雰囲気を明るくお伝えするため、適度な「！」や絵文字を使っても構いません。'}
+      3. ${isLowRating ? '感嘆符・絵文字・装飾は【一切完全禁止】です。すべて丁寧な句読点（「。」「、」）のみにしてください。' : '感謝の雰囲気を明るくお伝えするため、適度に「！」や絵文字を使っても構いません。'}
       4. 文字数は200文字以内に収めてください。
       5. 署名情報や署名の名前は含めず、本文のみを作成してください。
 
@@ -289,24 +278,22 @@ export class ReviewHandlerService {
     `;
 
     try {
-      const response = await this.anthropic.messages.create({
-        model: 'claude-sonnet-5',
-        max_tokens: 1000,
-        messages: [{ role: 'user', content: prompt }]
-      });
-
-      const responseText = response.content
-        .filter(block => block.type === 'text')
-        .map(block => block.text)
-        .join('\n')
-        .trim();
-
-      return responseText;
+      const result = await model.generateContent(prompt);
+      const response = await result.response;
+      return response.text().trim();
     } catch (error: any) {
-      console.error('❌ Claude generation failed in generateCustomApologyDraft:', error.message || error);
-      return isLowRating
-        ? 'この度は当店のご利用に際し、ご満足 of いつのサービスを提供できず、不快な思いをさせてしまいましたことを深くお詫び申し上げます。今後、このようなことがないようスタッフへの指導とサービスの改善に努めてまいります。'
-        : 'この度はご来店いただき、また素晴らしい評価をありがとうございます。これからも愛されるお店を目指して努力してまいります。またのお越しをお待ちしております！';
+      console.warn('⚠️ gemini-3.6-flash failed in generateCustomApologyDraft, trying gemini-3.5-flash:', error.message || error);
+      try {
+        const fallbackModel = this.genAI.getGenerativeModel({ model: 'gemini-3.5-flash' });
+        const result = await fallbackModel.generateContent(prompt);
+        const response = await result.response;
+        return response.text().trim();
+      } catch (fallbackErr: any) {
+        console.error('❌ Both gemini-3.6-flash and gemini-3.5-flash failed in generateCustomApologyDraft:', fallbackErr.message || fallbackErr);
+        return isLowRating
+          ? 'この度は当店のご利用に際し、ご満足のいくサービスを提供できず、不快な思いをさせてしまいましたことを深くお詫び申し上げます。今後、このようなことがないようスタッフへの指導とサービスの改善に努めてまいります。'
+          : 'この度はご来店いただき、また素晴らしい評価をありがとうございます。これからも愛されるお店を目指して努力してまいります。またのお越しをお待ちしております！';
+      }
     }
   }
 
@@ -324,7 +311,7 @@ export class ReviewHandlerService {
     if (!this.lineClient) return;
 
     // Generate real bypass magic login link!
-    const frontendUrl = process.env.FRONTEND_URL || 'https://365meo-dev.vercel.app';
+    const frontendUrl = process.env.FRONTEND_URL || 'https://meo-seiha-dev.vercel.app';
     let loginToken = shopId ? `simulated_token_${shopId}_long` : `temp-mock-token-for-${review.reviewId}`;
 
     if (shopId) {

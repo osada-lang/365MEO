@@ -11,7 +11,7 @@ const redirectURI = 'http://localhost';
 
 const scopes = [
   'https://www.googleapis.com/auth/business.manage',
-  'https://www.googleapis.com/auth/drive'
+  'https://www.googleapis.com/auth/drive.readonly'
 ];
 
 async function main() {
