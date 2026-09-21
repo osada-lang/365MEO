@@ -2018,10 +2018,30 @@ async function syncReviewsFromGBP(shopId: string) {
 const alreadyPostedToday = new Set<string>();
 
 // ==============================================================================
-// ⏱️ Background Automated Scheduler (Hourly execution check)
+// ⏱️ Background Automated Scheduler (Hourly execution check & auto-retry)
 // ==============================================================================
 async function runBackgroundScheduler() {
-  console.log(`\n⏰ [${new Date().toLocaleTimeString()}] Running MEO SEIHA background scheduler cycle...`);
+  const now = new Date();
+  
+  // Robustly extract year, month, day, and hour in Japan Standard Time (JST) regardless of server timezone
+  const jstFormatter = new Intl.DateTimeFormat('ja-JP', {
+    timeZone: 'Asia/Tokyo',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    hour12: false
+  });
+  const parts = jstFormatter.formatToParts(now);
+  const year = parts.find(p => p.type === 'year')?.value;
+  const month = parts.find(p => p.type === 'month')?.value;
+  const day = parts.find(p => p.type === 'day')?.value;
+  const hour = parts.find(p => p.type === 'hour')?.value;
+
+  const todayStr = `${year}-${month}-${day}`;
+  const currentHour = parseInt(hour || '0', 10);
+
+  console.log(`\n⏰ [${todayStr} ${hour}:00 JST] 365MEO バックグラウンド自動巡回サイクルを開始します...`);
 
   const clientID = process.env.GOOGLE_CLIENT_ID;
   const clientSecret = process.env.GOOGLE_CLIENT_SECRET;
@@ -2029,36 +2049,16 @@ async function runBackgroundScheduler() {
   const googleAuthAvailable = !!(clientID && clientSecret && refreshToken);
 
   try {
-    // Only fetch OWNER shops for review sync and daily posting
     const shops = await prisma.shop.findMany({
-      where: { role: 'OWNER' },
       include: { keywords: true, templates: true },
     });
 
-    const now = new Date();
-    
-    // Robustly extract year, month, day, and hour in Japan Standard Time (JST) regardless of server timezone
-    const jstFormatter = new Intl.DateTimeFormat('ja-JP', {
-      timeZone: 'Asia/Tokyo',
-      year: 'numeric',
-      month: '2-digit',
-      day: '2-digit',
-      hour: '2-digit',
-      hour12: false
-    });
-    const parts = jstFormatter.formatToParts(now);
-    const year = parts.find(p => p.type === 'year')?.value;
-    const month = parts.find(p => p.type === 'month')?.value;
-    const day = parts.find(p => p.type === 'day')?.value;
-    const hour = parts.find(p => p.type === 'hour')?.value;
-
-    const todayStr = `${year}-${month}-${day}`;
-    const currentHour = parseInt(hour || '0', 10);
+    console.log(`🔎 登録店舗数: ${shops.length}件 を確認`);
 
     // Clear alreadyPostedToday memory cache at midnight JST
     if (currentHour === 0) {
       alreadyPostedToday.clear();
-      console.log('🧹 Midnight JST reached: Cleared scheduler memory set for the new day.');
+      console.log('🧹 [日付変更検知] 深夜0時(JST)を迎えたため、当日の投稿済みメモリキャッシュをクリアしました。');
     }
 
     for (const shop of shops) {
@@ -2066,18 +2066,38 @@ async function runBackgroundScheduler() {
       if (shop.post_active && shop.keywords) {
         const postTimeHour = (shop.keywords as any).post_time_hour ?? 12; // Default is 12 (Noon)
 
-        // If current hour matches the store's configured posting hour
-        if (currentHour === postTimeHour) {
-          const memoryKey = `${shop.id}_${todayStr}`;
-          if (!alreadyPostedToday.has(memoryKey)) {
-            console.log(`⏱️ Daily post triggered for store: "${shop.name}" at ${postTimeHour}:00 (Current Hour: ${currentHour})`);
-            alreadyPostedToday.add(memoryKey);
+        let isAlreadyPostedTodayInDb = false;
+        if (shop.keywords.draft_posts) {
+          try {
+            const drafts = JSON.parse(shop.keywords.draft_posts);
+            const postedItem = drafts.find((d: any) => d.dayIndex === -1);
+            if (postedItem && postedItem.publishedAt) {
+              const pubDateJst = jstFormatter.formatToParts(new Date(postedItem.publishedAt));
+              const pYear = pubDateJst.find(p => p.type === 'year')?.value;
+              const pMonth = pubDateJst.find(p => p.type === 'month')?.value;
+              const pDay = pubDateJst.find(p => p.type === 'day')?.value;
+              const pubDateStr = `${pYear}-${pMonth}-${pDay}`;
+              if (pubDateStr === todayStr) {
+                isAlreadyPostedTodayInDb = true;
+              }
+            }
+          } catch (e) {}
+        }
 
+        const memoryKey = `${shop.id}_${todayStr}`;
+
+        if (currentHour >= postTimeHour) {
+          if (isAlreadyPostedTodayInDb || alreadyPostedToday.has(memoryKey)) {
+            console.log(`✓ 店舗「${shop.name}」: 本日分（${todayStr}）は既に投稿完了済みです。`);
+            alreadyPostedToday.add(memoryKey);
+          } else {
+            console.log(`🚀 [自動投稿実行] 店舗「${shop.name}」: 設定時刻 ${postTimeHour}:00 (現在: ${currentHour}:00 JST) ➔ 投稿処理を開始します...`);
             try {
               await executeDailyPostRollover(shop.id);
-              console.log(`✅ Automatically completed daily post & slide for store: "${shop.name}"`);
+              alreadyPostedToday.add(memoryKey);
+              console.log(`✅ [自動投稿成功] 店舗「${shop.name}」の投稿＆下書きスライドが完了しました！`);
             } catch (postErr: any) {
-              console.error(`❌ Background daily post failed for store "${shop.name}":`, postErr.message || postErr);
+              console.error(`❌ [自動投稿失敗] 店舗「${shop.name}」の投稿処理でエラーが発生しました（次回のCronで自動再試行します）:`, postErr.message || postErr);
             }
           }
         }
