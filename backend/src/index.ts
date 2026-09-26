@@ -1589,80 +1589,92 @@ async function executeDailyPostRollover(shopId: string) {
   }
 
   if (resolvedPath) {
-    console.log(`📡 Attempting real GBP post creation for location: ${resolvedPath}`);
-    try {
-      const oauth2Client = new google.auth.OAuth2(clientID, clientSecret, 'http://localhost');
-      oauth2Client.setCredentials({ refresh_token: refreshToken });
-      
-      // Determine if there is an image to attach
-      let mediaPayload = undefined;
-      if (publishedPost.imageFileId) {
-        const apiBaseUrl = process.env.RENDER_EXTERNAL_URL || process.env.BACKEND_API_BASE_URL || 'http://localhost:3000';
-        const sourceUrl = `${apiBaseUrl}/api/shops/${shopId}/drive-images/${publishedPost.imageFileId}/view`;
-        console.log(`📸 Attaching image to GBP post: ${sourceUrl}`);
-        mediaPayload = [
-          {
-            mediaFormat: 'PHOTO',
-            sourceUrl: sourceUrl,
-          }
-        ];
-      }
+    // 🛡️ Content Validation Safeguard: Prevent error notices or pending placeholders from ever being published to Google Maps
+    const isPendingOrInvalid =
+      publishedPost.text.includes('【下書き生成保留中】') ||
+      publishedPost.text.includes('AI APIクレジット') ||
+      publishedPost.text.includes('自動生成を保留') ||
+      publishedPost.text.includes('【AI生成保留中】') ||
+      publishedPost.text.trim().length < 30;
 
-      // Append the fixed footer to the post text before publishing to GMB if configured
-      let finalPostText = publishedPost.text;
-      if (shop.keywords && shop.keywords.fixed_footer) {
-        // We prepend a solid visual divider line (━━━━━━━━━━━━━━━━) to structurally isolate the footer.
-        // Google's parser cannot merge symbol glyphs into standard prose, forcing a clean footer layout.
-        finalPostText = `${finalPostText}\n\n━━━━━━━━━━━━━━━━\n${shop.keywords.fixed_footer}`;
-      }
-
-      // 1. Normalize all line breaks to standard \n (LF)
-      let normalizedText = finalPostText.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
-
-      // 2. Prevent spam filtering and layout collapse by limiting contiguous newlines to maximum of 2 (i.e. maximum 1 empty line)
-      normalizedText = normalizedText.replace(/\n{3,}/g, '\n\n');
-
-      // 3. Process each line to prevent Google's Maps/Search engine from collapsing empty lines into a wall of text.
-      // We append a full-width space and a zero-width space (\u200B) to empty lines so Google's renderer sees them as active paragraphs.
-      const gbpPostText = normalizedText
-        .split('\n')
-        .map((line: string) => {
-          const trimmed = line.trim();
-          if (trimmed === '') {
-            return '　\u200B'; // Full-width Japanese space + Zero-width invisible space
-          }
-          return trimmed;
-        })
-        .join('\n'); // Standard LF join
-
-      // Determine if there is an action button (Call to Action) to attach (e.g. LP or Campaign URL)
-      let callToActionPayload = undefined;
-      if (shop.keywords && shop.keywords.gbp_action_url) {
-        console.log(`🔗 Attaching Call-to-Action button to GBP post: ${shop.keywords.gbp_action_url}`);
-        callToActionPayload = {
-          actionType: 'LEARN_MORE',
-          url: shop.keywords.gbp_action_url
-        };
-      }
-
-      // Post to GMB v4 LocalPosts API
-      const response = await oauth2Client.request({
-        url: `https://mybusiness.googleapis.com/v4/${resolvedPath}/localPosts`,
-        method: 'POST',
-        data: {
-          languageCode: 'ja-JP',
-          summary: gbpPostText,
-          topicType: 'STANDARD',
-          ...(mediaPayload ? { media: mediaPayload } : {}),
-          ...(callToActionPayload ? { callToAction: callToActionPayload } : {})
+    if (isPendingOrInvalid) {
+      console.warn(`⚠️ [GBP安全遮断] 店舗「${shop.name}」: 本日の下書きはAI生成保留中のため、Googleマップへの一般公開を安全にスキップしました。`);
+    } else {
+      console.log(`📡 Attempting real GBP post creation for location: ${resolvedPath}`);
+      try {
+        const oauth2Client = new google.auth.OAuth2(clientID, clientSecret, 'http://localhost');
+        oauth2Client.setCredentials({ refresh_token: refreshToken });
+        
+        // Determine if there is an image to attach
+        let mediaPayload = undefined;
+        if (publishedPost.imageFileId) {
+          const apiBaseUrl = process.env.RENDER_EXTERNAL_URL || process.env.BACKEND_API_BASE_URL || 'http://localhost:3000';
+          const sourceUrl = `${apiBaseUrl}/api/shops/${shopId}/drive-images/${publishedPost.imageFileId}/view`;
+          console.log(`📸 Attaching image to GBP post: ${sourceUrl}`);
+          mediaPayload = [
+            {
+              mediaFormat: 'PHOTO',
+              sourceUrl: sourceUrl,
+            }
+          ];
         }
-      });
 
-      gbpPublished = true;
-      gbpResponse = response.data;
-      console.log('✅ Successfully published real post to Google Business Profile!');
-    } catch (gbpError: any) {
-      console.error('⚠️ Real GBP publishing failed:', gbpError.message || gbpError);
+        // Append the fixed footer to the post text before publishing to GMB if configured
+        let finalPostText = publishedPost.text;
+        if (shop.keywords && shop.keywords.fixed_footer) {
+          // We prepend a solid visual divider line (━━━━━━━━━━━━━━━━) to structurally isolate the footer.
+          // Google's parser cannot merge symbol glyphs into standard prose, forcing a clean footer layout.
+          finalPostText = `${finalPostText}\n\n━━━━━━━━━━━━━━━━\n${shop.keywords.fixed_footer}`;
+        }
+
+        // 1. Normalize all line breaks to standard \n (LF)
+        let normalizedText = finalPostText.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+
+        // 2. Prevent spam filtering and layout collapse by limiting contiguous newlines to maximum of 2 (i.e. maximum 1 empty line)
+        normalizedText = normalizedText.replace(/\n{3,}/g, '\n\n');
+
+        // 3. Process each line to prevent Google's Maps/Search engine from collapsing empty lines into a wall of text.
+        // We append a full-width space and a zero-width space (\u200B) to empty lines so Google's renderer sees them as active paragraphs.
+        const gbpPostText = normalizedText
+          .split('\n')
+          .map((line: string) => {
+            const trimmed = line.trim();
+            if (trimmed === '') {
+              return '　\u200B'; // Full-width Japanese space + Zero-width invisible space
+            }
+            return trimmed;
+          })
+          .join('\n'); // Standard LF join
+
+        // Determine if there is an action button (Call to Action) to attach (e.g. LP or Campaign URL)
+        let callToActionPayload = undefined;
+        if (shop.keywords && shop.keywords.gbp_action_url) {
+          console.log(`🔗 Attaching Call-to-Action button to GBP post: ${shop.keywords.gbp_action_url}`);
+          callToActionPayload = {
+            actionType: 'LEARN_MORE',
+            url: shop.keywords.gbp_action_url
+          };
+        }
+
+        // Post to GMB v4 LocalPosts API
+        const response = await oauth2Client.request({
+          url: `https://mybusiness.googleapis.com/v4/${resolvedPath}/localPosts`,
+          method: 'POST',
+          data: {
+            languageCode: 'ja-JP',
+            summary: gbpPostText,
+            topicType: 'STANDARD',
+            ...(mediaPayload ? { media: mediaPayload } : {}),
+            ...(callToActionPayload ? { callToAction: callToActionPayload } : {})
+          }
+        });
+
+        gbpPublished = true;
+        gbpResponse = response.data;
+        console.log('✅ Successfully published real post to Google Business Profile!');
+      } catch (gbpError: any) {
+        console.error('⚠️ Real GBP publishing failed:', gbpError.message || gbpError);
+      }
     }
   }
 
@@ -1720,15 +1732,34 @@ async function executeDailyPostRollover(shopId: string) {
   const isAlternating = imageCount >= 1 && imageCount < 10;
   const forceTextOnlyForDay2 = isAlternating ? !!draft2.imageFileId : false;
 
-  // 3. Generate a brand new Day 2 draft using Gemini AI!
-  const newDay2Raw = await generateSingleDraft(shop, 2, driveFilesList, forceTextOnlyForDay2);
-  const nextDay2 = {
-    dayIndex: 2,
-    title: '明々後日投稿予定の下書き (Day 2)',
-    text: newDay2Raw.text,
-    subKeywords: newDay2Raw.subKeywords,
-    imageFileId: newDay2Raw.imageFileId || null,
-  };
+  // 3. Generate a brand new Day 2 draft using Gemini AI with robust fail-safe error boundary!
+  let nextDay2;
+  try {
+    const newDay2Raw = await generateSingleDraft(shop, 2, driveFilesList, forceTextOnlyForDay2);
+    nextDay2 = {
+      dayIndex: 2,
+      title: '明々後日投稿予定の下書き (Day 2)',
+      text: newDay2Raw.text,
+      subKeywords: newDay2Raw.subKeywords,
+      imageFileId: newDay2Raw.imageFileId || null,
+    };
+  } catch (aiErr: any) {
+    console.error(`⚠️ [AI下書き生成エラー] 店舗「${shop.name}」のDay 2下書き自動生成に失敗しました（スライド処理は安全に継続します）:`, aiErr.message || aiErr);
+    let fallbackSubs: string[] = [];
+    try {
+      if (shop.keywords?.sub_keywords) {
+        fallbackSubs = JSON.parse(shop.keywords.sub_keywords).slice(0, 2);
+      }
+    } catch (e) {}
+
+    nextDay2 = {
+      dayIndex: 2,
+      title: '明々後日投稿予定の下書き (Day 2 - AI生成保留中)',
+      text: '【下書き生成保留中】Google AI APIのクレジット残高不足、または通信タイムアウトにより自動生成を保留しました。APIクレジット確認後、ダッシュボードの「下書きを再生成」ボタンから再作成してください。',
+      subKeywords: fallbackSubs,
+      imageFileId: null,
+    };
+  }
 
   const newDrafts = [nextDayMinus1, nextDay0, nextDay1, nextDay2];
 
