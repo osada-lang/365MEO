@@ -2065,41 +2065,48 @@ async function syncReviewsFromGBP(shopId: string) {
   }
 }
 
-// In-memory set to prevent double posting in the same hour
+// In-memory set to prevent double posting in the same hour & Mutex Lock to prevent overlapping runs
+let isSchedulerRunning = false;
 const alreadyPostedToday = new Set<string>();
 
 // ==============================================================================
 // ⏱️ Background Automated Scheduler (Hourly execution check & auto-retry)
 // ==============================================================================
 async function runBackgroundScheduler() {
-  const now = new Date();
-  
-  // Robustly extract year, month, day, and hour in Japan Standard Time (JST) regardless of server timezone
-  const jstFormatter = new Intl.DateTimeFormat('ja-JP', {
-    timeZone: 'Asia/Tokyo',
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    hour12: false
-  });
-  const parts = jstFormatter.formatToParts(now);
-  const year = parts.find(p => p.type === 'year')?.value;
-  const month = parts.find(p => p.type === 'month')?.value;
-  const day = parts.find(p => p.type === 'day')?.value;
-  const hour = parts.find(p => p.type === 'hour')?.value;
-
-  const todayStr = `${year}-${month}-${day}`;
-  const currentHour = parseInt(hour || '0', 10);
-
-  console.log(`\n⏰ [${todayStr} ${hour}:00 JST] 365MEO バックグラウンド自動巡回サイクルを開始します...`);
-
-  const clientID = process.env.GOOGLE_CLIENT_ID;
-  const clientSecret = process.env.GOOGLE_CLIENT_SECRET;
-  const refreshToken = process.env.GOOGLE_REFRESH_TOKEN;
-  const googleAuthAvailable = !!(clientID && clientSecret && refreshToken);
+  if (isSchedulerRunning) {
+    console.log('🔒 [排他制御ガード] 現在すでに自動巡回バッチが実行中です。二重投稿・並行実行を防ぐため今回のリクエストを安全にスキップしました。');
+    return;
+  }
+  isSchedulerRunning = true;
 
   try {
+    const now = new Date();
+    
+    // Robustly extract year, month, day, and hour in Japan Standard Time (JST) regardless of server timezone
+    const jstFormatter = new Intl.DateTimeFormat('ja-JP', {
+      timeZone: 'Asia/Tokyo',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      hour12: false
+    });
+    const parts = jstFormatter.formatToParts(now);
+    const year = parts.find(p => p.type === 'year')?.value;
+    const month = parts.find(p => p.type === 'month')?.value;
+    const day = parts.find(p => p.type === 'day')?.value;
+    const hour = parts.find(p => p.type === 'hour')?.value;
+
+    const todayStr = `${year}-${month}-${day}`;
+    const currentHour = parseInt(hour || '0', 10);
+
+    console.log(`\n⏰ [${todayStr} ${hour}:00 JST] 365MEO バックグラウンド自動巡回サイクルを開始します...`);
+
+    const clientID = process.env.GOOGLE_CLIENT_ID;
+    const clientSecret = process.env.GOOGLE_CLIENT_SECRET;
+    const refreshToken = process.env.GOOGLE_REFRESH_TOKEN;
+    const googleAuthAvailable = !!(clientID && clientSecret && refreshToken);
+
     const shops = await prisma.shop.findMany({
       include: { keywords: true, templates: true },
     });
@@ -2143,12 +2150,15 @@ async function runBackgroundScheduler() {
             alreadyPostedToday.add(memoryKey);
           } else {
             console.log(`🚀 [自動投稿実行] 店舗「${shop.name}」: 設定時刻 ${postTimeHour}:00 (現在: ${currentHour}:00 JST) ➔ 投稿処理を開始します...`);
+            // 🛡️ Pre-lock memory key immediately before async communication begins!
+            alreadyPostedToday.add(memoryKey);
             try {
               await executeDailyPostRollover(shop.id);
-              alreadyPostedToday.add(memoryKey);
               console.log(`✅ [自動投稿成功] 店舗「${shop.name}」の投稿＆下書きスライドが完了しました！`);
             } catch (postErr: any) {
               console.error(`❌ [自動投稿失敗] 店舗「${shop.name}」の投稿処理でエラーが発生しました（次回のCronで自動再試行します）:`, postErr.message || postErr);
+              // Unlock only if rollover completely failed so future retry can happen
+              alreadyPostedToday.delete(memoryKey);
             }
           }
         }
@@ -2180,7 +2190,7 @@ async function runBackgroundScheduler() {
             });
 
             if (pendingAutoReviews.length > 0) {
-              console.log(`🤖 [自動返信スケジューラー] 店舗: 「${shop.name}」に対して 1時間経過した全自動返信対象 of 口コミが ${pendingAutoReviews.length}件 検出されました。自動送信を開始します。`);
+              console.log(`🤖 [自動返信スケジューラー] 店舗: 「${shop.name}」に対して 1時間経過した全自動返信対象の口コミが ${pendingAutoReviews.length}件 検出されました。自動送信を開始します。`);
 
               for (const pRev of pendingAutoReviews) {
                 if (pRev.reply_text) {
@@ -2218,6 +2228,8 @@ async function runBackgroundScheduler() {
     }
   } catch (err) {
     console.error('❌ Scheduler error:', err);
+  } finally {
+    isSchedulerRunning = false;
   }
 }
 
