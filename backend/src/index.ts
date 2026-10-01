@@ -1655,12 +1655,22 @@ async function executeDailyPostRollover(shopId: string) {
           };
         }
 
+        const postTimeHour = (shop.keywords as any)?.post_time_hour ?? 12;
+        const now = new Date();
+        const jstHourStr = new Intl.DateTimeFormat('ja-JP', {
+          timeZone: 'Asia/Tokyo',
+          hour: '2-digit',
+          hour12: false
+        }).format(now);
+        const currentHour = parseInt(jstHourStr || '0', 10);
+        const isDelayedCycle = currentHour > postTimeHour;
+
         let gbpSuccess = false;
         let lastGbpError: any = null;
 
         for (let attempt = 1; attempt <= 2; attempt++) {
           try {
-            console.log(`📡 [GBP投稿 試行 ${attempt}/2] Location: ${resolvedPath}`);
+            console.log(`📡 [GBP投稿 試行 ${attempt}/2] Location: ${resolvedPath} (画像添付: ${mediaPayload ? 'あり' : 'なし'})`);
             const response = await oauth2Client.request({
               url: `https://mybusiness.googleapis.com/v4/${resolvedPath}/localPosts`,
               method: 'POST',
@@ -1684,6 +1694,31 @@ async function executeDailyPostRollover(shopId: string) {
             if (attempt < 2) {
               await new Promise(r => setTimeout(r, 2000));
             }
+          }
+        }
+
+        // 🛡️ 1時間経過(遅延)時の画像エラー自動フォールバック:
+        // 設定時刻から1時間以上経過(例: 13:00以降)しても画像がGoogle側でエラー拒否される場合、テキストのみに切り替えて確実に公開
+        if (!gbpSuccess && mediaPayload && isDelayedCycle) {
+          console.warn(`🛡️ [GBPテキストフォールバック起動] 設定時刻(${postTimeHour}:00)から1時間以上経過(現在: ${currentHour}:00 JST)し、画像送信がGoogle側で拒否されたため、テキストのみでの投稿に切り替えて再試行します...`);
+          try {
+            const fallbackRes = await oauth2Client.request({
+              url: `https://mybusiness.googleapis.com/v4/${resolvedPath}/localPosts`,
+              method: 'POST',
+              data: {
+                languageCode: 'ja-JP',
+                summary: gbpPostText,
+                topicType: 'STANDARD',
+                ...(callToActionPayload ? { callToAction: callToActionPayload } : {})
+              }
+            });
+            gbpPublished = true;
+            gbpResponse = fallbackRes.data;
+            gbpSuccess = true;
+            console.log('✅ [テキストフォールバック成功] 画像を切り離したテキストのみの投稿がGoogleマップへ正常に公開されました！');
+          } catch (fallbackErr: any) {
+            lastGbpError = fallbackErr;
+            console.error('❌ [テキストフォールバックも失敗]:', fallbackErr.message || fallbackErr);
           }
         }
 
