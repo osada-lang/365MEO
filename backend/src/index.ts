@@ -377,6 +377,89 @@ app.get('/api/shops', async (req, res) => {
 // 📊 Dashboard & Settings Endpoints
 // ==========================================
 
+// Interface for Google Drive file with subfolder information
+interface DriveFileItem {
+  id: string;
+  name: string;
+  folderName?: string;
+  folderId?: string;
+  mimeType?: string;
+  size?: string;
+  createdTime?: string;
+}
+
+// Reusable Helper to fetch all images from root folder AND all subfolders with folder metadata
+async function fetchDriveFilesWithSubfolders(auth: any, rootFolderId: string): Promise<DriveFileItem[]> {
+  if (!auth || !rootFolderId || rootFolderId === 'root') {
+    return [];
+  }
+
+  try {
+    const drive = google.drive({ version: 'v3', auth });
+
+    // Step 1: Scan for all subfolders directly inside the root folder
+    let subfolders: any[] = [];
+    const folderMap = new Map<string, string>(); // folderId -> folderName
+    try {
+      const subfolderRes = await drive.files.list({
+        q: `'${rootFolderId}' in parents and mimeType = 'application/vnd.google-apps.folder' and trashed = false`,
+        fields: 'files(id, name)',
+        pageSize: 100,
+      });
+      subfolders = subfolderRes.data.files || [];
+      subfolders.forEach((f: any) => {
+        if (f.id && f.name) {
+          folderMap.set(f.id, f.name.trim());
+        }
+      });
+    } catch (subfolderErr: any) {
+      console.warn('⚠️ Could not fetch subfolders from Drive, will only scan root folder:', subfolderErr.message || subfolderErr);
+    }
+
+    // Step 2: Query for all images in root folder OR in any of the subfolders
+    const parentIds = [rootFolderId, ...Array.from(folderMap.keys())];
+    const parentQuery = parentIds.map(id => `'${id}' in parents`).join(' or ');
+
+    const imageRes = await drive.files.list({
+      q: `(${parentQuery}) and (mimeType = 'image/jpeg' or mimeType = 'image/png' or mimeType = 'image/jpg') and trashed = false`,
+      fields: 'files(id, name, mimeType, size, createdTime, parents)',
+      pageSize: 1000,
+    });
+
+    const files = imageRes.data.files || [];
+    const result: DriveFileItem[] = files.map((file: any) => {
+      let folderName: string | undefined = undefined;
+      let folderId: string | undefined = undefined;
+      if (file.parents && file.parents.length > 0) {
+        for (const p of file.parents) {
+          if (folderMap.has(p)) {
+            folderName = folderMap.get(p);
+            folderId = p;
+            break;
+          }
+        }
+      }
+      const sizeBytes = parseInt(file.size || '0', 10);
+      const sizeMB = sizeBytes > 0 ? `${(sizeBytes / (1024 * 1024)).toFixed(1)} MB` : '不明';
+
+      return {
+        id: file.id || '',
+        name: file.name || '無題の写真',
+        folderName,
+        folderId,
+        mimeType: file.mimeType || 'image/jpeg',
+        size: sizeMB,
+        createdTime: file.createdTime || new Date().toISOString(),
+      };
+    });
+
+    return result;
+  } catch (err: any) {
+    console.error('⚠️ Failed to fetch Drive files with subfolders:', err.message || err);
+    return [];
+  }
+}
+
 // GET /api/shops/:shopId/dashboard
 app.get('/api/shops/:shopId/dashboard', async (req, res) => {
   const { shopId } = req.params;
@@ -398,26 +481,22 @@ app.get('/api/shops/:shopId/dashboard', async (req, res) => {
     let imageCount = mockDriveFiles.length;
     let firstFileId = mockDriveFiles.length > 0 ? mockDriveFiles[0].id : null;
     let driveFileIds: string[] = mockDriveFiles.slice(0, 3).map(f => f.id);
-    let driveFilesList: { id: string, name: string }[] = mockDriveFiles;
+    let driveFilesList: DriveFileItem[] = mockDriveFiles;
 
     const auth = getGoogleAuthClient();
-    if (auth) {
+    if (auth && shop.google_drive_folder_id) {
       try {
-        const drive = google.drive({ version: 'v3', auth });
-        const driveRes = await drive.files.list({
-          q: `parents in '${shop.google_drive_folder_id || 'root'}' and (mimeType = 'image/jpeg' or mimeType = 'image/png' or mimeType = 'image/jpg') and trashed = false`,
-          fields: 'files(id, name)',
-          pageSize: 1000,
-        });
-        if (driveRes.data.files) {
-          imageCount = driveRes.data.files.length;
-          driveFilesList = driveRes.data.files.map((f: any) => ({ id: f.id || '', name: f.name || '' }));
-          if (driveRes.data.files.length > 0) {
-            firstFileId = driveRes.data.files[0].id || null;
-            driveFileIds = driveRes.data.files.slice(0, 3).map(f => f.id || '');
-          } else {
-            driveFileIds = [];
-          }
+        const liveFiles = await fetchDriveFilesWithSubfolders(auth, shop.google_drive_folder_id);
+        if (liveFiles.length > 0) {
+          imageCount = liveFiles.length;
+          driveFilesList = liveFiles;
+          firstFileId = liveFiles[0].id || null;
+          driveFileIds = liveFiles.slice(0, 3).map(f => f.id || '');
+        } else {
+          imageCount = 0;
+          driveFilesList = [];
+          firstFileId = null;
+          driveFileIds = [];
         }
       } catch (e) {
         console.log('⚠️ Failed to fetch live Drive images for dashboard, using fallback count.');
@@ -728,27 +807,10 @@ app.get('/api/shops/:shopId/drive-images', async (req, res) => {
       return res.json({ files: mockDriveFiles, isMock: true });
     }
 
-    const drive = google.drive({ version: 'v3', auth });
     const folderId = shop.google_drive_folder_id || 'root';
 
-    console.log(`📂 Scanning Google Drive folder: ${folderId}...`);
-    const driveRes = await drive.files.list({
-      q: `parents in '${folderId}' and (mimeType = 'image/jpeg' or mimeType = 'image/png' or mimeType = 'image/jpg') and trashed = false`,
-      pageSize: 1000,
-      fields: 'files(id, name, mimeType, size, createdTime)',
-    });
-
-    const files = (driveRes.data.files || []).map((file) => {
-      const sizeBytes = parseInt(file.size || '0', 10);
-      const sizeMB = sizeBytes > 0 ? `${(sizeBytes / (1024 * 1024)).toFixed(1)} MB` : '不明';
-      return {
-        id: file.id || '',
-        name: file.name || '無題の写真',
-        mimeType: file.mimeType || 'image/jpeg',
-        size: sizeMB,
-        createdTime: file.createdTime || new Date().toISOString(),
-      };
-    });
+    console.log(`📂 Scanning Google Drive folder and subfolders: ${folderId}...`);
+    const files = await fetchDriveFilesWithSubfolders(auth, folderId);
 
     return res.json({ files, isMock: false });
   } catch (error: any) {
@@ -1223,7 +1285,7 @@ app.post('/api/shops/:shopId/test-line-alert', async (req, res) => {
 async function generateSingleDraft(
   shop: any,
   dayIndex: number,
-  driveFiles?: { id: string, name: string }[],
+  driveFiles?: DriveFileItem[],
   forceTextOnly: boolean = false
 ): Promise<{ text: string, subKeywords: string[], imageFileId: string | null }> {
   const mainKeywords: string[] = JSON.parse(shop.keywords?.main_keywords || '[]');
@@ -1239,18 +1301,45 @@ async function generateSingleDraft(
   const isAlternating = imageCount >= 1 && imageCount < 10;
   const shouldBeTextOnly = forceTextOnly || (isAlternating && dayIndex % 2 === 1);
 
-  // Pick a random image from driveFiles if available and not text-only (independent of text generation)
-  if (driveFiles && driveFiles.length > 0 && !shouldBeTextOnly) {
-    const randomIndex = Math.floor(Math.random() * driveFiles.length);
-    const selectedFile = driveFiles[randomIndex];
-    imageFileId = selectedFile.id || null;
-  }
-
-  // Standard randomized sub-keyword selection (independent of image files)
+  // 1. First, select the daily randomized sub-keywords
   if (subKeywords.length > 0) {
     const shuffled = [...subKeywords].sort(() => 0.5 - Math.random());
     const count = Math.floor(Math.random() * 2) + 2; // 2 or 3
     selectedSubKeywords.push(...shuffled.slice(0, Math.min(count, shuffled.length)));
+  }
+
+  // 2. Intelligent Image Selection with Subfolder Matching & Safe Root Fallback
+  if (driveFiles && driveFiles.length > 0 && !shouldBeTextOnly) {
+    const subfolderMatchedFiles: DriveFileItem[] = [];
+
+    // Check if any drive file belongs to a subfolder that matches one of the selected sub-keywords
+    if (selectedSubKeywords.length > 0) {
+      for (const file of driveFiles) {
+        if (file.folderName) {
+          const normalizedFolderName = file.folderName.trim().toLowerCase();
+          const isMatched = selectedSubKeywords.some((subKw: string) => {
+            const normalizedSubKw = subKw.trim().toLowerCase();
+            return normalizedFolderName === normalizedSubKw || normalizedFolderName.includes(normalizedSubKw) || normalizedSubKw.includes(normalizedFolderName);
+          });
+          if (isMatched) {
+            subfolderMatchedFiles.push(file);
+          }
+        }
+      }
+    }
+
+    if (subfolderMatchedFiles.length > 0) {
+      // Pick randomly from the matching subfolder images!
+      const randomIndex = Math.floor(Math.random() * subfolderMatchedFiles.length);
+      const selectedFile = subfolderMatchedFiles[randomIndex];
+      imageFileId = selectedFile.id || null;
+      console.log(`📁 [サブフォルダ連動] サブキーワード [${selectedSubKeywords.join(', ')}] に一致するフォルダ「${selectedFile.folderName}」から画像(${selectedFile.id})を選択しました。`);
+    } else {
+      // 100% Safe Root Fallback: Pick randomly from the entire pool (including root images)
+      const randomIndex = Math.floor(Math.random() * driveFiles.length);
+      const selectedFile = driveFiles[randomIndex];
+      imageFileId = selectedFile.id || null;
+    }
   }
 
   const geminiApiKey = process.env.GEMINI_API_KEY;
@@ -1426,23 +1515,11 @@ app.post('/api/shops/:shopId/draft-posts/regenerate', async (req, res) => {
       draftPostsArr = JSON.parse(shop.keywords.draft_posts);
     }
 
-    // Fetch Drive files for image matching
-    let driveFilesList: any[] = [];
+    // Fetch Drive files with subfolders for intelligent keyword-folder matching
+    let driveFilesList: DriveFileItem[] = [];
     const auth = getGoogleAuthClient();
     if (auth && shop.google_drive_folder_id) {
-      try {
-        const drive = google.drive({ version: 'v3', auth });
-        const driveRes = await drive.files.list({
-          q: `parents in '${shop.google_drive_folder_id}' and (mimeType = 'image/jpeg' or mimeType = 'image/png' or mimeType = 'image/jpg') and trashed = false`,
-          fields: 'files(id, name)',
-          pageSize: 1000,
-        });
-        if (driveRes.data.files) {
-          driveFilesList = driveRes.data.files.map((f: any) => ({ id: f.id || '', name: f.name || '' }));
-        }
-      } catch (driveErr) {
-        console.error('⚠️ Failed to fetch Drive files for regeneration:', driveErr);
-      }
+      driveFilesList = await fetchDriveFilesWithSubfolders(auth, shop.google_drive_folder_id);
     }
 
     if (all) {
@@ -1733,23 +1810,11 @@ async function executeDailyPostRollover(shopId: string) {
     }
   }
 
-  // Fetch Drive files for image matching
-  let driveFilesList: any[] = [];
+  // Fetch Drive files with subfolders for intelligent keyword-folder matching
+  let driveFilesList: DriveFileItem[] = [];
   const auth = getGoogleAuthClient();
   if (auth && shop.google_drive_folder_id) {
-    try {
-      const drive = google.drive({ version: 'v3', auth });
-      const driveRes = await drive.files.list({
-        q: `parents in '${shop.google_drive_folder_id}' and (mimeType = 'image/jpeg' or mimeType = 'image/png' or mimeType = 'image/jpg') and trashed = false`,
-        fields: 'files(id, name)',
-        pageSize: 1000,
-      });
-      if (driveRes.data.files) {
-        driveFilesList = driveRes.data.files.map((f: any) => ({ id: f.id || '', name: f.name || '' }));
-      }
-    } catch (driveErr) {
-      console.error('⚠️ Failed to fetch Drive files for batch rollover:', driveErr);
-    }
+    driveFilesList = await fetchDriveFilesWithSubfolders(auth, shop.google_drive_folder_id);
   }
 
   // 2. Perform the roll-over (Slide)
