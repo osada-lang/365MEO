@@ -1852,12 +1852,12 @@ export default function App() {
                   毎日自動投稿の時間帯
                 </label>
                 <p className="text-[9px] text-slate-400 leading-normal font-bold">
-                  おしらせがGoogleマップ（GBP）へ自動公開される時間帯を1時間単位で設定できます。（デフォルト：12時）
+                  おしらせがGoogleマップ（GBP）へ自動公開される時間帯を1時間単位で設定できます。（デフォルト：9時）
                 </p>
                 <div className="relative">
                   <select
                     className="block w-full border border-slate-200 rounded-xl px-3 py-2.5 text-xs font-bold bg-slate-50/50 text-slate-900 focus:outline-none focus:ring-2 focus:ring-brandBlue-500 appearance-none cursor-pointer"
-                    value={settings.keywords.postTimeHour !== undefined ? settings.keywords.postTimeHour : 12}
+                    value={settings.keywords.postTimeHour !== undefined ? settings.keywords.postTimeHour : 9}
                     onChange={(e) => setSettings({
                       ...settings,
                       keywords: { ...settings.keywords, postTimeHour: parseInt(e.target.value, 10) }

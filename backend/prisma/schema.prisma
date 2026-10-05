@@ -21,7 +21,7 @@ model Shop {
   google_drive_folder_id String?
   line_user_id          String?
   reply_active          Boolean       @default(true)
-  post_active           Boolean       @default(true)
+  post_active           Boolean       @default(false)
   custom_review_prompt  String?
   created_at            DateTime      @default(now())
   updated_at            DateTime      @updatedAt
@@ -45,7 +45,7 @@ model ShopKeywords {
   gurunavi_url       String?
   gbp_action_url     String?
   draft_posts        String?  // JSON-serialized string of 3 draft posts array
-  post_time_hour     Int      @default(12)
+  post_time_hour     Int      @default(9)
   updated_at         DateTime @updatedAt
 
   shop          Shop     @relation(fields: [shop_id], references: [id], onDelete: Cascade)

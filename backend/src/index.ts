@@ -460,6 +460,186 @@ async function fetchDriveFilesWithSubfolders(auth: any, rootFolderId: string): P
   }
 }
 
+interface GbpLocationDetails {
+  title?: string;
+  categoryName?: string;
+  locality?: string;
+  administrativeArea?: string;
+  fullAddress?: string;
+  phone?: string;
+  websiteUri?: string;
+}
+
+// Helper to fetch GBP metadata (category, address, phone, website) from Google API
+async function fetchGbpLocationDetails(oauth2Client: any, locationIdInput: string): Promise<GbpLocationDetails | null> {
+  if (!oauth2Client || !locationIdInput) return null;
+  const numericalId = locationIdInput.match(/\d+/)?.[0];
+  if (!numericalId) return null;
+
+  try {
+    const mybusiness = google.mybusinessaccountmanagement({
+      version: 'v1',
+      auth: oauth2Client
+    });
+    const accountsRes = await mybusiness.accounts.list();
+    const accounts = accountsRes.data.accounts || [];
+    
+    for (const account of accounts) {
+      if (account.name) {
+        const fullLocationPath = `${account.name}/locations/${numericalId}`;
+        try {
+          const locRes = await oauth2Client.request({
+            url: `https://mybusiness.googleapis.com/v4/${fullLocationPath}`,
+            method: 'GET'
+          });
+          const locData = locRes.data as any;
+          if (locData) {
+            const addr = locData.address || {};
+            const city = addr.locality || addr.sublocality || '';
+            const pref = addr.administrativeArea || '';
+            const addressLines = (addr.addressLines || []).join(' ');
+            const fullAddr = [pref, city, addressLines].filter(Boolean).join(' ');
+            
+            return {
+              title: locData.locationName || locData.title,
+              categoryName: locData.primaryCategory?.displayName || locData.primaryCategory?.categoryName || '',
+              locality: city || pref,
+              administrativeArea: pref,
+              fullAddress: fullAddr,
+              phone: locData.primaryPhone,
+              websiteUri: locData.websiteUrl
+            };
+          }
+        } catch (v4Err: any) {
+          // If individual location query fails, continue to next account
+        }
+      }
+    }
+  } catch (err: any) {
+    console.warn('⚠️ Could not fetch GBP location details:', err.message || err);
+  }
+  return null;
+}
+
+// Automatically initialize default ShopKeywords & settings from GBP info (or store name)
+async function initializeShopKeywords(shop: any, driveFilesList: DriveFileItem[] = []) {
+  if (shop.keywords) {
+    return shop.keywords;
+  }
+
+  console.log(`✨ Initializing default ShopKeywords and settings for shop: "${shop.name}"`);
+
+  let gbpDetails: GbpLocationDetails | null = null;
+  const auth = getGoogleAuthClient();
+  const locationIdInput = shop.google_location_id;
+
+  if (auth && locationIdInput) {
+    try {
+      gbpDetails = await fetchGbpLocationDetails(auth, locationIdInput);
+      if (gbpDetails) {
+        console.log(`📍 Successfully fetched GBP metadata for "${shop.name}":`, gbpDetails);
+      }
+    } catch (e) {
+      console.warn('⚠️ Failed to fetch GBP metadata for initial keywords:', e);
+    }
+  }
+
+  const storeTitle = gbpDetails?.title || shop.name || '店舗';
+  const category = gbpDetails?.categoryName || '店舗';
+  const locality = gbpDetails?.locality || '';
+
+  // 1. Build tailored main keywords
+  const mainKws: string[] = [];
+  if (locality && category && category !== '店舗') {
+    mainKws.push(`${locality} ${category}`);
+  }
+  mainKws.push(storeTitle);
+  if (category && category !== '店舗') {
+    mainKws.push(`${category} おすすめ`);
+  }
+  if (locality && storeTitle) {
+    mainKws.push(`${locality} ${storeTitle}`);
+  }
+  if (mainKws.length < 3) {
+    mainKws.push('最新情報', 'おすすめメニュー');
+  }
+
+  // 2. Build tailored sub keywords
+  const subKws: string[] = [
+    category !== '店舗' ? `${category} メニュー` : 'こだわりメニュー',
+    '季節のおすすめ',
+    '人気サービス',
+    'ご予約受付中',
+    'お客様の声',
+    'アクセス・店舗情報',
+  ];
+
+  // 3. Build fixed footer
+  const footerLines = ['━━━━━━━━━━━━━━━━', storeTitle];
+  if (gbpDetails?.fullAddress) {
+    footerLines.push(`📍 住所: ${gbpDetails.fullAddress}`);
+  }
+  if (gbpDetails?.phone) {
+    footerLines.push(`📞 電話番号: ${gbpDetails.phone}`);
+  }
+  if (gbpDetails?.websiteUri) {
+    footerLines.push(`🌐 公式HP: ${gbpDetails.websiteUri}`);
+  }
+  footerLines.push('ご来店・お問い合わせを心よりお待ちしております。', '━━━━━━━━━━━━━━━━');
+  const fixedFooter = footerLines.join('\n');
+
+  // 4. Custom prompt
+  const locationPrefix = locality ? `${locality}の` : '';
+  const categoryLabel = category && category !== '店舗' ? `${category}` : '店舗';
+  const customPrompt = `親しみやすく誠実なトーンで。${locationPrefix}${categoryLabel}「${storeTitle}」の魅力やこだわり、専門的な強みについて、お客様にとって有益で分かりやすい内容で発信してください。`;
+
+  // 5. Generate 3 initial AI drafts
+  let draftPostsArr = [];
+  try {
+    const dummyShop = {
+      ...shop,
+      keywords: {
+        main_keywords: JSON.stringify(mainKws),
+        sub_keywords: JSON.stringify(subKws),
+        fixed_footer: fixedFooter,
+        custom_prompt: customPrompt,
+      }
+    };
+    const day0 = await generateSingleDraft(dummyShop, 0, driveFilesList);
+    const day1 = await generateSingleDraft(dummyShop, 1, driveFilesList);
+    const day2 = await generateSingleDraft(dummyShop, 2, driveFilesList);
+    draftPostsArr = [
+      { dayIndex: 0, title: '今日投稿予定の下書き (Day 0)', text: day0.text, subKeywords: day0.subKeywords, imageFileId: day0.imageFileId || null },
+      { dayIndex: 1, title: '明日投稿予定の下書き (Day 1)', text: day1.text, subKeywords: day1.subKeywords, imageFileId: day1.imageFileId || null },
+      { dayIndex: 2, title: '明後日投稿予定の下書き (Day 2)', text: day2.text, subKeywords: day2.subKeywords, imageFileId: day2.imageFileId || null },
+    ];
+  } catch (genErr) {
+    console.warn('⚠️ Initial draft generation during setup failed, using placeholder drafts:', genErr);
+    draftPostsArr = [
+      { dayIndex: 0, title: '今日投稿予定の下書き (Day 0)', text: `${storeTitle}の本日のおしらせ下書きです。`, subKeywords: [] },
+      { dayIndex: 1, title: '明日投稿予定の下書き (Day 1)', text: `${storeTitle}の明日のおしらせ下書きです。`, subKeywords: [] },
+      { dayIndex: 2, title: '明後日投稿予定の下書き (Day 2)', text: `${storeTitle}の明後日のおしらせ下書きです。`, subKeywords: [] },
+    ];
+  }
+
+  const createdKeywords = await prisma.shopKeywords.upsert({
+    where: { shop_id: shop.id },
+    update: {},
+    create: {
+      shop_id: shop.id,
+      main_keywords: JSON.stringify(mainKws),
+      sub_keywords: JSON.stringify(subKws),
+      fixed_footer: fixedFooter,
+      custom_prompt: customPrompt,
+      hp_url: gbpDetails?.websiteUri || null,
+      draft_posts: JSON.stringify(draftPostsArr),
+      post_time_hour: 9,
+    }
+  });
+
+  return createdKeywords;
+}
+
 // GET /api/shops/:shopId/dashboard
 app.get('/api/shops/:shopId/dashboard', async (req, res) => {
   const { shopId } = req.params;
@@ -522,6 +702,11 @@ app.get('/api/shops/:shopId/dashboard', async (req, res) => {
         is_auto_replied: false,
       }
     });
+
+    // Auto-initialize ShopKeywords & default tailored settings if missing
+    if (!shop.keywords) {
+      shop.keywords = await initializeShopKeywords(shop, driveFilesList);
+    }
 
     // Determine 3-day drafts
     let draftPostsArr = [];
@@ -631,7 +816,7 @@ app.get('/api/shops/:shopId/dashboard', async (req, res) => {
       postingMode,
       postingModeLabel,
       pendingReviewsCount,
-      nextPostTime: `本日 ${(shop.keywords as any)?.post_time_hour ?? 12}:00 予定`,
+      nextPostTime: `本日 ${(shop.keywords as any)?.post_time_hour ?? 9}:00 予定`,
       previewImage,
       googleLocationId: shop.google_location_id,
       gbpActionUrl: shop.keywords?.gbp_action_url || null,
@@ -695,6 +880,10 @@ app.get('/api/shops/:shopId/settings', async (req, res) => {
       return res.status(404).json({ error: '店舗が見つかりませんでした。' });
     }
 
+    if (!shop.keywords) {
+      shop.keywords = await initializeShopKeywords(shop);
+    }
+
     const mainKeywords = shop.keywords ? JSON.parse(shop.keywords.main_keywords) : [];
     const subKeywords = shop.keywords ? JSON.parse(shop.keywords.sub_keywords) : [];
 
@@ -715,7 +904,7 @@ app.get('/api/shops/:shopId/settings', async (req, res) => {
         hotpepperUrl: shop.keywords?.hotpepper_url || '',
         gurunaviUrl: shop.keywords?.gurunavi_url || '',
         gbpActionUrl: shop.keywords?.gbp_action_url || '',
-        postTimeHour: (shop.keywords as any)?.post_time_hour ?? 12,
+        postTimeHour: (shop.keywords as any)?.post_time_hour ?? 9,
       }
     });
   } catch (error) {
@@ -758,7 +947,7 @@ app.post('/api/shops/:shopId/settings', async (req, res) => {
           hotpepper_url: keywords.hotpepperUrl,
           gurunavi_url: keywords.gurunaviUrl,
           gbp_action_url: keywords.gbpActionUrl,
-          post_time_hour: typeof keywords.postTimeHour === 'number' ? keywords.postTimeHour : 12,
+          post_time_hour: typeof keywords.postTimeHour === 'number' ? keywords.postTimeHour : 9,
         },
         create: {
           shop_id: shopId,
@@ -771,7 +960,7 @@ app.post('/api/shops/:shopId/settings', async (req, res) => {
           hotpepper_url: keywords.hotpepperUrl,
           gurunavi_url: keywords.gurunaviUrl,
           gbp_action_url: keywords.gbpActionUrl,
-          post_time_hour: typeof keywords.postTimeHour === 'number' ? keywords.postTimeHour : 12,
+          post_time_hour: typeof keywords.postTimeHour === 'number' ? keywords.postTimeHour : 9,
         }
       });
     }
@@ -1732,7 +1921,7 @@ async function executeDailyPostRollover(shopId: string) {
           };
         }
 
-        const postTimeHour = (shop.keywords as any)?.post_time_hour ?? 12;
+        const postTimeHour = (shop.keywords as any)?.post_time_hour ?? 9;
         const now = new Date();
         const jstHourStr = new Intl.DateTimeFormat('ja-JP', {
           timeZone: 'Asia/Tokyo',
@@ -2220,9 +2409,14 @@ async function runBackgroundScheduler() {
     }
 
     for (const shop of shops) {
+      if (!shop.keywords) {
+        console.log(`✨ 店舗「${shop.name}」: 初期キーワード設定を自動生成します...`);
+        shop.keywords = await initializeShopKeywords(shop);
+      }
+
       // 1. Check for Daily Automated Posting
       if (shop.post_active && shop.keywords) {
-        const postTimeHour = (shop.keywords as any).post_time_hour ?? 12; // Default is 12 (Noon)
+        const postTimeHour = (shop.keywords as any)?.post_time_hour ?? 9; // Default is 9 (9:00 AM)
 
         let isAlreadyPostedTodayInDb = false;
         if (shop.keywords.draft_posts) {
