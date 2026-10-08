@@ -17,7 +17,8 @@ import {
   Send,
   Check,
   Clock,
-  ArrowLeft
+  ArrowLeft,
+  Folder
 } from 'lucide-react';
 
 const metaEnv = (import.meta as any).env;
@@ -67,6 +68,7 @@ interface DashboardData {
 interface DriveImage {
   id: string;
   name: string;
+  folderName?: string;
   mimeType: string;
   size: string;
   createdTime: string;
@@ -1730,9 +1732,15 @@ export default function App() {
                           alt={photo.name}
                           className="object-cover w-full h-full"
                         />
+                        {photo.folderName && (
+                          <div className="absolute top-2 left-2 px-2 py-0.5 bg-indigo-600/90 backdrop-blur-sm text-white text-[9px] font-black rounded-lg shadow-sm flex items-center gap-1 border border-white/20 z-10">
+                            <Folder className="w-2.5 h-2.5" />
+                            <span className="truncate max-w-[90px]">{photo.folderName}</span>
+                          </div>
+                        )}
                         <button
                           onClick={() => handleDeleteImage(photo.id, photo.name)}
-                          className="absolute bottom-2 right-2 p-2 bg-slate-950/80 text-rose-400 hover:text-rose-500 rounded-xl transition-all"
+                          className="absolute bottom-2 right-2 p-2 bg-slate-950/80 text-rose-400 hover:text-rose-500 rounded-xl transition-all z-10"
                           title="画像を削除"
                         >
                           <Trash2 className="w-4 h-4" />
