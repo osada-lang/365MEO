@@ -2565,33 +2565,6 @@ app.post('/api/batch/trigger-scheduler', async (req, res) => {
   return res.json({ success: true, message: 'バックグラウンドバッチ処理（自動投稿＆口コミ同期）を正常に起動しました！' });
 });
 
-// Helper to auto-sync known location IDs (e.g. TOMOEデザイン)
-async function syncKnownShopLocations() {
-  try {
-    const tomoeShop = await prisma.shop.findFirst({
-      where: {
-        OR: [
-          { name: { contains: 'TOMOE' } },
-          { name: { contains: 'tomoe' } },
-          { name: { contains: 'トモエ' } },
-        ]
-      }
-    });
-
-    if (tomoeShop && (!tomoeShop.google_location_id || !tomoeShop.google_location_id.includes('12479817179542355864'))) {
-      await prisma.shop.update({
-        where: { id: tomoeShop.id },
-        data: {
-          google_location_id: 'locations/12479817179542355864'
-        }
-      });
-      console.log(`✅ [Location ID Set] Updated TOMOEデザイン with google_location_id: locations/12479817179542355864`);
-    }
-  } catch (err: any) {
-    console.warn('⚠️ syncKnownShopLocations notice:', err.message || err);
-  }
-}
-
 // Start express server
 app.listen(port, () => {
   console.log(`\n================================================================================`);
@@ -2599,15 +2572,11 @@ app.listen(port, () => {
   console.log(`📅 Started on: ${new Date().toLocaleString()}`);
   console.log(`================================================================================\n`);
 
-  // Run initial sync of known location IDs
-  syncKnownShopLocations().catch(() => {});
-
   // ⏱️ Start Local Background Scheduler Fallback (Every 10 minutes & 15 seconds after startup)
   console.log('⏱️ [Internal Scheduler] Initializing internal fallback scheduler (10-minute intervals)...');
   setInterval(async () => {
     console.log('⏰ [Internal Scheduler] Executing automatic background sync cycle...');
     try {
-      await syncKnownShopLocations();
       await runBackgroundScheduler();
       console.log('✅ [Internal Scheduler] Completed background sync cycle successfully.');
     } catch (err: any) {
@@ -2618,7 +2587,6 @@ app.listen(port, () => {
   setTimeout(async () => {
     console.log('⏰ [Internal Scheduler] Executing initial startup background sync...');
     try {
-      await syncKnownShopLocations();
       await runBackgroundScheduler();
       console.log('✅ [Internal Scheduler] Completed initial startup background sync.');
     } catch (err: any) {
