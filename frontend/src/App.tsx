@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   LayoutDashboard,
   Image as ImageIcon,
@@ -18,7 +18,9 @@ import {
   Check,
   Clock,
   ArrowLeft,
-  Folder
+  Folder,
+  FolderPlus,
+  X
 } from 'lucide-react';
 
 const metaEnv = (import.meta as any).env;
@@ -138,7 +140,16 @@ export default function App() {
   const [recentSenders, setRecentSenders] = useState<{ userId: string; displayName: string; timestamp: number }[]>([]);
   const [isDetectingLine, setIsDetectingLine] = useState<boolean>(false);
   const [messageBanner, setMessageBanner] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Folder management & Upload modal states
+  const [selectedFolderFilter, setSelectedFolderFilter] = useState<string>('ALL');
+  const [isUploadModalOpen, setIsUploadModalOpen] = useState<boolean>(false);
+  const [availableFolders, setAvailableFolders] = useState<{ id: string; name: string }[]>([]);
+  const [uploadSelectedFile, setUploadSelectedFile] = useState<File | null>(null);
+  const [uploadPreviewUrl, setUploadPreviewUrl] = useState<string | null>(null);
+  const [uploadTargetFolderId, setUploadTargetFolderId] = useState<string>('root');
+  const [uploadNewFolderName, setUploadNewFolderName] = useState<string>('');
+  const [isCreatingNewFolder, setIsCreatingNewFolder] = useState<boolean>(false);
 
   // 3-Day Draft states
   const [editingDraftText, setEditingDraftText] = useState<{ [dayIndex: number]: string }>({});
@@ -527,26 +538,38 @@ export default function App() {
     }
   };
 
-  // Direct Image upload to Google Drive
-  const handleImageUploadClick = () => {
-    fileInputRef.current?.click();
+  // Open upload modal with folder selector
+  const handleOpenUploadModal = () => {
+    setUploadSelectedFile(null);
+    setUploadPreviewUrl(null);
+    setUploadTargetFolderId('root');
+    setUploadNewFolderName('');
+    setIsCreatingNewFolder(false);
+    setIsUploadModalOpen(true);
   };
 
-  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleModalFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (!file || !currentShop) return;
+    if (!file) return;
 
-    // Check size limit (e.g. 5MB)
     if (file.size > 5 * 1024 * 1024) {
       showBanner('error', '画像ファイルは5MB以下にしてください。');
       return;
     }
 
+    setUploadSelectedFile(file);
+    const objectUrl = URL.createObjectURL(file);
+    setUploadPreviewUrl(objectUrl);
+  };
+
+  const handleExecuteUpload = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!uploadSelectedFile || !currentShop) return;
+
     setIsUploading(true);
 
-    // Convert file to base64
     const reader = new FileReader();
-    reader.readAsDataURL(file);
+    reader.readAsDataURL(uploadSelectedFile);
     reader.onload = async () => {
       const base64String = (reader.result as string).split(',')[1];
 
@@ -555,16 +578,27 @@ export default function App() {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            fileName: file.name,
-            mimeType: file.type,
+            fileName: uploadSelectedFile.name,
+            mimeType: uploadSelectedFile.type,
             base64Data: base64String,
+            targetFolderId: uploadTargetFolderId,
+            newFolderName: isCreatingNewFolder ? uploadNewFolderName : undefined,
           }),
         });
 
         const data = await res.json();
         if (res.ok) {
           setPhotos([data.file, ...photos]);
-          showBanner('success', `🎉 「${file.name}」をストックに直接追加しました。`);
+          if (isCreatingNewFolder && uploadNewFolderName.trim()) {
+            setAvailableFolders(prev => [...prev, { id: data.file.folderId || '', name: uploadNewFolderName.trim() }]);
+          }
+          setIsUploadModalOpen(false);
+          setUploadSelectedFile(null);
+          setUploadPreviewUrl(null);
+          setUploadNewFolderName('');
+          setIsCreatingNewFolder(false);
+          setUploadTargetFolderId('root');
+          showBanner('success', `🎉 「${uploadSelectedFile.name}」を${data.file.folderName ? `フォルダ「${data.file.folderName}」` : '直下'}に追加しました。`);
         } else {
           showBanner('error', data.error || 'アップロードに失敗しました。');
         }
@@ -572,7 +606,6 @@ export default function App() {
         showBanner('error', '画像のアップロード中に通信エラーが発生しました。');
       } finally {
         setIsUploading(false);
-        if (fileInputRef.current) fileInputRef.current.value = '';
       }
     };
   };
@@ -1677,37 +1710,66 @@ export default function App() {
                 ここから追加した写真は自動的にストックされ、MEO自動投稿のローテーションで使用されます。
               </p>
 
-              {/* Upload action box */}
+              {/* Upload action button */}
               <div className="pt-3">
-                <input
-                  type="file"
-                  ref={fileInputRef}
-                  onChange={handleFileChange}
-                  accept="image/jpeg,image/png"
-                  className="hidden"
-                />
                 <button
-                  onClick={handleImageUploadClick}
+                  onClick={handleOpenUploadModal}
                   disabled={isUploading}
                   className="w-full bg-brandBlue-50 hover:bg-brandBlue-100 border border-brandBlue-200 text-brandBlue-700 font-extrabold text-xs py-3 px-4 rounded-xl shadow-sm transition-all active:scale-[0.98] flex items-center justify-center gap-1.5"
                 >
-                  {isUploading ? (
-                    <RefreshCw className="w-4 h-4 animate-spin" />
-                  ) : (
-                    <>
-                      <Upload className="w-4 h-4" />
-                      写真をアップロード追加する (JPEG/PNG)
-                    </>
-                  )}
+                  <Upload className="w-4 h-4" />
+                  写真をアップロード追加する (フォルダ指定可)
                 </button>
               </div>
             </div>
 
-            {/* Photos Grid */}
+            {/* Photos Grid & Filter Tabs */}
             <div className="space-y-2.5">
-              <span className="text-xs font-black text-slate-400 block uppercase tracking-wider">
-                現在のストック写真一覧 ({photos.length >= 1000 ? '1000枚 - これ以上読み込めません' : `${photos.length}枚`})
-              </span>
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-black text-slate-400 block uppercase tracking-wider">
+                  ストック写真一覧 ({photos.length >= 1000 ? '1000枚 - 上限' : `${photos.length}枚`})
+                </span>
+              </div>
+
+              {/* Folder Filter Tabs */}
+              {photos.length > 0 && (
+                <div className="flex items-center gap-1.5 overflow-x-auto pb-1.5 pt-0.5 no-scrollbar">
+                  <button
+                    onClick={() => setSelectedFolderFilter('ALL')}
+                    className={`px-3 py-1.5 rounded-xl text-[11px] font-black whitespace-nowrap transition-all flex items-center gap-1 ${
+                      selectedFolderFilter === 'ALL'
+                        ? 'bg-slate-900 text-white shadow-sm'
+                        : 'bg-white text-slate-600 border border-slate-200/80 hover:bg-slate-50'
+                    }`}
+                  >
+                    すべて ({photos.length})
+                  </button>
+                  <button
+                    onClick={() => setSelectedFolderFilter('ROOT')}
+                    className={`px-3 py-1.5 rounded-xl text-[11px] font-black whitespace-nowrap transition-all flex items-center gap-1 ${
+                      selectedFolderFilter === 'ROOT'
+                        ? 'bg-slate-900 text-white shadow-sm'
+                        : 'bg-white text-slate-600 border border-slate-200/80 hover:bg-slate-50'
+                    }`}
+                  >
+                    直下のみ ({photos.filter(p => !p.folderName).length})
+                  </button>
+                  {Array.from(new Set(photos.filter(p => p.folderName).map(p => p.folderName as string))).map(fName => (
+                    <button
+                      key={fName}
+                      onClick={() => setSelectedFolderFilter(fName)}
+                      className={`px-3 py-1.5 rounded-xl text-[11px] font-black whitespace-nowrap transition-all flex items-center gap-1 ${
+                        selectedFolderFilter === fName
+                          ? 'bg-indigo-600 text-white shadow-sm'
+                          : 'bg-indigo-50 text-indigo-700 border border-indigo-200 hover:bg-indigo-100'
+                      }`}
+                    >
+                      <Folder className="w-3 h-3" />
+                      {fName} ({photos.filter(p => p.folderName === fName).length})
+                    </button>
+                  ))}
+                </div>
+              )}
 
               {isLoading ? (
                 <div className="bg-white border border-slate-200/80 rounded-2xl py-12 px-4 text-center space-y-3">
@@ -1724,7 +1786,12 @@ export default function App() {
                 </div>
               ) : (
                 <div className="grid grid-cols-2 gap-3">
-                  {photos.map((photo) => (
+                  {(selectedFolderFilter === 'ALL'
+                    ? photos
+                    : selectedFolderFilter === 'ROOT'
+                      ? photos.filter(p => !p.folderName)
+                      : photos.filter(p => p.folderName === selectedFolderFilter)
+                  ).map((photo) => (
                     <div key={photo.id} className="bg-white border border-slate-200/80 rounded-2xl overflow-hidden shadow-sm flex flex-col group relative">
                       <div className="aspect-square bg-slate-900/5 relative flex items-center justify-center overflow-hidden border-b border-slate-100">
                         <img
@@ -2740,6 +2807,170 @@ export default function App() {
           <p className="text-[9px] text-slate-400 font-bold truncate" title={currentShop.email}>{currentShop.email}</p>
         </div>
       </aside>
+
+      {/* 📤 MODAL: Upload Photo to Google Drive with Folder Selector */}
+      {isUploadModalOpen && (
+        <div className="fixed inset-0 bg-slate-950/60 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-3xl p-6 w-full max-w-md shadow-2xl space-y-5 animate-in fade-in zoom-in duration-150">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-xl bg-brandBlue-50 flex items-center justify-center text-brandBlue-600">
+                  <Upload className="w-4 h-4" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-black text-slate-900">写真をGoogle Driveへ追加</h3>
+                  <p className="text-[10px] text-slate-400 font-bold">フォルダを指定してアップロードできます</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsUploadModalOpen(false)}
+                className="p-1.5 text-slate-400 hover:text-slate-600 rounded-xl hover:bg-slate-100 transition-all"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleExecuteUpload} className="space-y-4">
+              {/* File Dropzone / Select */}
+              <div className="space-y-1.5">
+                <label className="block text-[11px] font-black text-slate-700">
+                  ① 写真を選択 <span className="text-rose-500">*</span>
+                </label>
+                <input
+                  type="file"
+                  id="modal-file-input"
+                  onChange={handleModalFileSelect}
+                  accept="image/jpeg,image/png"
+                  className="hidden"
+                />
+                {uploadPreviewUrl ? (
+                  <div className="relative rounded-2xl overflow-hidden border border-slate-200 aspect-video bg-slate-900/5 flex items-center justify-center group">
+                    <img src={uploadPreviewUrl} alt="プレビュー" className="object-cover w-full h-full" />
+                    <label
+                      htmlFor="modal-file-input"
+                      className="absolute inset-0 bg-slate-950/40 opacity-0 group-hover:opacity-100 flex items-center justify-center text-white text-xs font-bold transition-all cursor-pointer gap-1.5 backdrop-blur-xs"
+                    >
+                      <RefreshCw className="w-4 h-4" />
+                      写真を変更する
+                    </label>
+                  </div>
+                ) : (
+                  <label
+                    htmlFor="modal-file-input"
+                    className="border-2 border-dashed border-slate-200 hover:border-brandBlue-400 bg-slate-50/50 hover:bg-brandBlue-50/30 rounded-2xl p-6 text-center cursor-pointer transition-all flex flex-col items-center justify-center gap-2 group block"
+                  >
+                    <div className="w-10 h-10 rounded-2xl bg-white shadow-sm flex items-center justify-center text-slate-400 group-hover:text-brandBlue-500 group-hover:scale-110 transition-all">
+                      <ImageIcon className="w-5 h-5" />
+                    </div>
+                    <div className="space-y-0.5">
+                      <p className="text-xs font-black text-slate-700">写真を選択してください</p>
+                      <p className="text-[10px] text-slate-400 font-bold">JPEG / PNG（最大5MBまで）</p>
+                    </div>
+                  </label>
+                )}
+              </div>
+
+              {/* Destination Folder Selector */}
+              <div className="space-y-2">
+                <label className="block text-[11px] font-black text-slate-700">
+                  ② 保存先フォルダ (サブキーワード連動)
+                </label>
+
+                {!isCreatingNewFolder ? (
+                  <div className="space-y-2">
+                    <div className="relative">
+                      <select
+                        value={uploadTargetFolderId}
+                        onChange={(e) => {
+                          if (e.target.value === 'NEW') {
+                            setIsCreatingNewFolder(true);
+                            setUploadTargetFolderId('root');
+                          } else {
+                            setUploadTargetFolderId(e.target.value);
+                          }
+                        }}
+                        className="w-full border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs font-bold bg-white text-slate-800 focus:outline-none focus:ring-2 focus:ring-brandBlue-500 appearance-none cursor-pointer pr-10"
+                      >
+                        <option value="root">📁 （指定なし・直下に保存） - 汎用写真</option>
+                        {availableFolders.map((folder) => (
+                          <option key={folder.id} value={folder.id}>
+                            📁 {folder.name} (サブキーワード連動)
+                          </option>
+                        ))}
+                        <option value="NEW">➕ 新しいフォルダを作成する...</option>
+                      </select>
+                      <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-3.5 text-slate-400">
+                        <Folder className="w-4 h-4 text-slate-400" />
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="space-y-2 bg-indigo-50/60 border border-indigo-100 rounded-2xl p-3.5">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[10px] font-black text-indigo-700 flex items-center gap-1">
+                        <FolderPlus className="w-3.5 h-3.5" />
+                        新規フォルダの作成
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setIsCreatingNewFolder(false);
+                          setUploadNewFolderName('');
+                          setUploadTargetFolderId('root');
+                        }}
+                        className="text-[10px] font-bold text-slate-400 hover:text-slate-600"
+                      >
+                        既存選択に戻る
+                      </button>
+                    </div>
+                    <input
+                      type="text"
+                      placeholder="フォルダ名を入力 (例: ジェルネイル, フットケア)"
+                      value={uploadNewFolderName}
+                      onChange={(e) => setUploadNewFolderName(e.target.value)}
+                      className="w-full border border-indigo-200 rounded-xl px-3 py-2 text-xs font-bold bg-white text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                      required={isCreatingNewFolder}
+                    />
+                    <p className="text-[9px] text-indigo-600/80 font-bold leading-tight">
+                      ※このフォルダと同名のサブキーワードで投稿が作成される際、このフォルダ内の写真が自動で優先選択されます。
+                    </p>
+                  </div>
+                )}
+              </div>
+
+              {/* Action Buttons */}
+              <div className="pt-2 flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setIsUploadModalOpen(false)}
+                  disabled={isUploading}
+                  className="w-1/3 py-2.5 px-3 rounded-xl border border-slate-200 text-slate-600 font-extrabold text-xs hover:bg-slate-50 transition-all text-center"
+                >
+                  キャンセル
+                </button>
+                <button
+                  type="submit"
+                  disabled={!uploadSelectedFile || isUploading || (isCreatingNewFolder && !uploadNewFolderName.trim())}
+                  className="w-2/3 py-2.5 px-3 rounded-xl bg-brandBlue-600 hover:bg-brandBlue-700 disabled:bg-slate-200 text-white font-extrabold text-xs shadow-md shadow-brandBlue-500/20 transition-all flex items-center justify-center gap-1.5 active:scale-[0.98]"
+                >
+                  {isUploading ? (
+                    <>
+                      <RefreshCw className="w-4 h-4 animate-spin" />
+                      アップロード中...
+                    </>
+                  ) : (
+                    <>
+                      <Upload className="w-4 h-4" />
+                      Google Driveへ保存
+                    </>
+                  )}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

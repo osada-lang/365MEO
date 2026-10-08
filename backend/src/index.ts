@@ -1088,10 +1088,45 @@ app.get('/api/shops/:shopId/drive-images/:fileId/view', async (req, res) => {
   }
 });
 
-// POST /api/shops/:shopId/drive-images/upload (Upload raw base64 photo directly into Google Drive)
+// GET /api/shops/:shopId/drive-folders (Fetch list of subfolders in Google Drive)
+app.get('/api/shops/:shopId/drive-folders', async (req, res) => {
+  const { shopId } = req.params;
+
+  try {
+    const shop = await prisma.shop.findUnique({ where: { id: shopId } });
+    const auth = getGoogleAuthClient();
+
+    if (!shop) {
+      return res.status(404).json({ error: '店舗が見つかりませんでした。' });
+    }
+
+    if (!auth || !shop.google_drive_folder_id || shop.google_drive_folder_id === 'root') {
+      return res.json({ folders: [] });
+    }
+
+    const drive = google.drive({ version: 'v3', auth });
+    const subfolderRes = await drive.files.list({
+      q: `'${shop.google_drive_folder_id}' in parents and mimeType = 'application/vnd.google-apps.folder' and trashed = false`,
+      fields: 'files(id, name)',
+      pageSize: 100,
+    });
+
+    const folders = (subfolderRes.data.files || []).map((f: any) => ({
+      id: f.id || '',
+      name: f.name ? f.name.trim() : '無題のフォルダ',
+    }));
+
+    return res.json({ folders });
+  } catch (error: any) {
+    console.error('❌ Failed to fetch Drive folders:', error.message || error);
+    return res.json({ folders: [] });
+  }
+});
+
+// POST /api/shops/:shopId/drive-images/upload (Upload raw base64 photo directly into Google Drive with target subfolder)
 app.post('/api/shops/:shopId/drive-images/upload', async (req, res) => {
   const { shopId } = req.params;
-  const { fileName, mimeType, base64Data } = req.body;
+  const { fileName, mimeType, base64Data, targetFolderId, newFolderName } = req.body;
 
   if (!fileName || !mimeType || !base64Data) {
     return res.status(400).json({ error: '画像アップロードに必要なデータが不足しています。' });
@@ -1147,17 +1182,45 @@ app.post('/api/shops/:shopId/drive-images/upload', async (req, res) => {
     }
 
     const drive = google.drive({ version: 'v3', auth });
-    const folderId = shop.google_drive_folder_id || 'root';
+    let destinationFolderId = shop.google_drive_folder_id || 'root';
+    let targetFolderName: string | undefined = undefined;
+
+    // Handle new folder creation if specified
+    if (newFolderName && newFolderName.trim()) {
+      try {
+        console.log(`📁 Creating new subfolder in Drive: "${newFolderName.trim()}"...`);
+        const folderCreateRes = await drive.files.create({
+          requestBody: {
+            name: newFolderName.trim(),
+            mimeType: 'application/vnd.google-apps.folder',
+            parents: [destinationFolderId],
+          },
+          fields: 'id, name',
+        });
+        if (folderCreateRes.data.id) {
+          destinationFolderId = folderCreateRes.data.id;
+          targetFolderName = folderCreateRes.data.name?.trim();
+        }
+      } catch (fErr: any) {
+        console.warn('⚠️ Failed to create new subfolder in Drive, falling back to root folder:', fErr.message || fErr);
+      }
+    } else if (targetFolderId && targetFolderId !== 'root') {
+      destinationFolderId = targetFolderId;
+      try {
+        const fMeta = await drive.files.get({ fileId: targetFolderId, fields: 'name' });
+        targetFolderName = fMeta.data.name?.trim();
+      } catch (e) {}
+    }
 
     // Upload Stream
     const bufferStream = new stream.PassThrough();
     bufferStream.end(fileBuffer);
 
-    console.log(`🔄 Uploading file ${fileName} directly into Drive folder: ${folderId}...`);
+    console.log(`🔄 Uploading file ${fileName} into Drive folder: ${destinationFolderId} (${targetFolderName || '直下'})...`);
     const uploadRes = await drive.files.create({
       requestBody: {
         name: fileName,
-        parents: [folderId],
+        parents: [destinationFolderId],
         mimeType: mimeType,
       },
       media: {
@@ -1177,6 +1240,8 @@ app.post('/api/shops/:shopId/drive-images/upload', async (req, res) => {
       file: {
         id: file.id,
         name: file.name,
+        folderName: targetFolderName,
+        folderId: destinationFolderId,
         mimeType: file.mimeType,
         size: sizeMB,
         createdTime: file.createdTime,
