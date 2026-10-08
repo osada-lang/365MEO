@@ -74,6 +74,7 @@ model ReviewLogs {
   requires_alert      Boolean  @default(false)
   escalation_triggered Boolean @default(false)
   reply_source        String?
+  is_hidden           Boolean  @default(false)
   create_time         DateTime
   created_at          DateTime @default(now())
 

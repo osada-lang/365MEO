@@ -1284,7 +1284,7 @@ app.get('/api/shops/:shopId/reviews', async (req, res) => {
     const shopCreatedAt = shop?.created_at ? new Date(shop.created_at).getTime() : Date.now();
 
     const reviews = await prisma.reviewLogs.findMany({
-      where: { shop_id: shopId },
+      where: { shop_id: shopId, is_hidden: false },
       orderBy: { create_time: 'desc' },
     });
 
@@ -1301,18 +1301,35 @@ app.get('/api/shops/:shopId/reviews', async (req, res) => {
   }
 });
 
-// DELETE /api/shops/:shopId/reviews/:reviewId (Delete a review log)
+// DELETE /api/shops/:shopId/reviews/:reviewId (Soft delete a review log to prevent GBP re-sync resurrection)
 app.delete('/api/shops/:shopId/reviews/:reviewId', async (req, res) => {
   const { shopId, reviewId } = req.params;
 
   try {
-    await prisma.reviewLogs.delete({
-      where: { review_id: reviewId }
+    await prisma.reviewLogs.update({
+      where: { review_id: reviewId },
+      data: { is_hidden: true, requires_alert: false }
     });
-    return res.json({ success: true, message: '口コミ履歴を削除しました。' });
+    return res.json({ success: true, message: '口コミ履歴を削除（非表示）にしました。' });
   } catch (error: any) {
     console.error('❌ Failed to delete review log:', error);
     return res.status(500).json({ error: error.message || '口コミ履歴の削除に失敗しました。' });
+  }
+});
+
+// DELETE /api/shops/:shopId/reviews (Clear all reviews with soft delete)
+app.delete('/api/shops/:shopId/reviews', async (req, res) => {
+  const { shopId } = req.params;
+
+  try {
+    await prisma.reviewLogs.updateMany({
+      where: { shop_id: shopId },
+      data: { is_hidden: true, requires_alert: false }
+    });
+    return res.json({ success: true, message: 'すべての口コミ履歴をクリア（非表示）にしました。' });
+  } catch (error: any) {
+    console.error('❌ Failed to clear review logs:', error);
+    return res.status(500).json({ error: error.message || '口コミ履歴のクリアに失敗しました。' });
   }
 });
 
@@ -2254,6 +2271,11 @@ async function syncReviewsFromGBP(shopId: string) {
           where: { review_id: reviewId }
         });
 
+        // 🛡️ User Soft Delete Protection: If the review exists and was marked as is_hidden by the user on the dashboard, do NOT resurrect it!
+        if (existing && existing.is_hidden) {
+          continue;
+        }
+
         if (!existing) {
           console.log(`🆕 Detected brand NEW review from Google for "${shop.name}": Rating=${starRating} | Reviewer="${reviewerName}"`);
 
@@ -2486,6 +2508,7 @@ async function runBackgroundScheduler() {
                 shop_id: shop.id,
                 star_rating: { gte: 3 },
                 is_auto_replied: false,
+                is_hidden: false,
                 reply_text: { not: null },
                 create_time: { lte: oneHourAgo }
               }
