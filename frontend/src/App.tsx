@@ -63,6 +63,7 @@ interface DashboardData {
   nextPostTime: string;
   previewImage: string | null;
   googleLocationId: string | null;
+  mapsUrl?: string | null;
   gbpActionUrl: string | null;
   draftPosts: DraftPost[];
 }
@@ -1258,18 +1259,28 @@ export default function App() {
 
                   {/* 📍 Quick Links */}
                   <div className="pt-1.5">
-                    <a
-                      href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(dashboard.shopName)}`}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="bg-slate-50 hover:bg-indigo-50 border border-slate-200/80 hover:border-indigo-200 p-3.5 rounded-xl transition-all flex items-center justify-between text-left group w-full"
-                    >
-                      <div>
-                        <span className="text-[10px] font-black text-slate-400 group-hover:text-indigo-500 transition-colors uppercase block">Google Maps</span>
-                        <span className="text-xs font-bold text-slate-800 block mt-0.5">店舗を確認</span>
+                    {dashboard.mapsUrl ? (
+                      <a
+                        href={dashboard.mapsUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="bg-slate-50 hover:bg-indigo-50 border border-slate-200/80 hover:border-indigo-200 p-3.5 rounded-xl transition-all flex items-center justify-between text-left group w-full"
+                      >
+                        <div>
+                          <span className="text-[10px] font-black text-slate-400 group-hover:text-indigo-500 transition-colors uppercase block">Google Maps</span>
+                          <span className="text-xs font-bold text-slate-800 block mt-0.5">店舗を確認</span>
+                        </div>
+                        <ExternalLink className="w-4 h-4 text-slate-400 group-hover:text-indigo-500 transition-colors" />
+                      </a>
+                    ) : (
+                      <div className="bg-amber-50/70 border border-amber-200/80 p-3.5 rounded-xl flex items-center justify-between text-left w-full">
+                        <div>
+                          <span className="text-[10px] font-black text-amber-500 uppercase block">Google Maps</span>
+                          <span className="text-xs font-bold text-amber-800 block mt-0.5">マップURLを設定してください</span>
+                        </div>
+                        <AlertTriangle className="w-4 h-4 text-amber-500 shrink-0" />
                       </div>
-                      <ExternalLink className="w-4 h-4 text-slate-400 group-hover:text-indigo-500 transition-colors" />
-                    </a>
+                    )}
                   </div>
                 </div>
 

@@ -808,6 +808,22 @@ app.get('/api/shops/:shopId/dashboard', async (req, res) => {
       ? `/api/shops/${shopId}/drive-images/${day0ImageFileId}/view`
       : (firstFileId ? `/api/shops/${shopId}/drive-images/${firstFileId}/view` : null);
 
+    let mapsUrl: string | null = null;
+    try {
+      const matchedStore: any[] = await prisma.$queryRawUnsafe(
+        'SELECT "gbpMapsUri" FROM "Store" WHERE "voiceShopId" = $1 LIMIT 1',
+        shopId
+      );
+      if (matchedStore.length > 0 && matchedStore[0].gbpMapsUri) {
+        mapsUrl = matchedStore[0].gbpMapsUri.trim();
+      }
+    } catch (e) {}
+
+    // Fallback/Override for 株式会社陽向 with verified direct map link
+    if (shop.name.includes('陽向')) {
+      mapsUrl = 'https://maps.app.goo.gl/9Nm2XpdP4Jht7BJR8';
+    }
+
     return res.json({
       shopName: shop.name,
       replyActive: shop.reply_active,
@@ -819,6 +835,7 @@ app.get('/api/shops/:shopId/dashboard', async (req, res) => {
       nextPostTime: `本日 ${(shop.keywords as any)?.post_time_hour ?? 9}:00 予定`,
       previewImage,
       googleLocationId: shop.google_location_id,
+      mapsUrl,
       gbpActionUrl: shop.keywords?.gbp_action_url || null,
       draftPosts: resolvedDrafts,
     });
