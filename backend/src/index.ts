@@ -377,6 +377,25 @@ app.get('/api/shops', async (req, res) => {
 // 📊 Dashboard & Settings Endpoints
 // ==========================================
 
+// Helper to safely extract clean Google Drive folder ID
+function extractGoogleDriveFolderId(input?: string | null): string {
+  if (!input) return 'root';
+  const trimmed = input.trim();
+  if (!trimmed) return 'root';
+
+  const urlMatch = trimmed.match(/\/folders\/([a-zA-Z0-9_-]+)/);
+  if (urlMatch && urlMatch[1]) {
+    return urlMatch[1];
+  }
+  const queryMatch = trimmed.match(/[?&]id=([a-zA-Z0-9_-]+)/);
+  if (queryMatch && queryMatch[1]) {
+    return queryMatch[1];
+  }
+  const segments = trimmed.split(/[\/\\]/);
+  const lastSegment = segments[segments.length - 1].trim();
+  return lastSegment || 'root';
+}
+
 // Interface for Google Drive file with subfolder information
 interface DriveFileItem {
   id: string;
@@ -386,10 +405,15 @@ interface DriveFileItem {
   mimeType?: string;
   size?: string;
   createdTime?: string;
+  width?: number;
+  height?: number;
+  isValidForGbp?: boolean;
+  invalidReason?: string;
 }
 
 // Reusable Helper to fetch all images from root folder AND all subfolders with folder metadata
-async function fetchDriveFilesWithSubfolders(auth: any, rootFolderId: string): Promise<DriveFileItem[]> {
+async function fetchDriveFilesWithSubfolders(auth: any, rawFolderId: string): Promise<DriveFileItem[]> {
+  const rootFolderId = extractGoogleDriveFolderId(rawFolderId);
   if (!auth || !rootFolderId || rootFolderId === 'root') {
     return [];
   }
@@ -422,7 +446,7 @@ async function fetchDriveFilesWithSubfolders(auth: any, rootFolderId: string): P
 
     const imageRes = await drive.files.list({
       q: `(${parentQuery}) and (mimeType = 'image/jpeg' or mimeType = 'image/png' or mimeType = 'image/jpg') and trashed = false`,
-      fields: 'files(id, name, mimeType, size, createdTime, parents)',
+      fields: 'files(id, name, mimeType, size, createdTime, parents, imageMediaMetadata)',
       pageSize: 1000,
     });
 
@@ -442,6 +466,34 @@ async function fetchDriveFilesWithSubfolders(auth: any, rootFolderId: string): P
       const sizeBytes = parseInt(file.size || '0', 10);
       const sizeMB = sizeBytes > 0 ? `${(sizeBytes / (1024 * 1024)).toFixed(1)} MB` : '不明';
 
+      const width = file.imageMediaMetadata?.width ? parseInt(file.imageMediaMetadata.width, 10) : undefined;
+      const height = file.imageMediaMetadata?.height ? parseInt(file.imageMediaMetadata.height, 10) : undefined;
+
+      let isValidForGbp = true;
+      let invalidReason: string | undefined = undefined;
+
+      // Validate resolution (Google Business Profile requires >= 250x250)
+      if (width !== undefined && height !== undefined) {
+        if (width < 250 || height < 250) {
+          isValidForGbp = false;
+          invalidReason = `解像度が不足しています (${width}×${height}px)。GoogleマイビジネスのMEO投稿には縦横250px以上の画像が必要です。`;
+        }
+      } else if (file.name && file.name.match(/[-_](\d+)x(\d+)\.(jpg|jpeg|png)$/i)) {
+        const match = file.name.match(/[-_](\d+)x(\d+)\.(jpg|jpeg|png)$/i);
+        const w = parseInt(match[1], 10);
+        const h = parseInt(match[2], 10);
+        if (w < 250 || h < 250) {
+          isValidForGbp = false;
+          invalidReason = `解像度が不足しています (${w}×${h}px)。GoogleマイビジネスのMEO投稿には縦横250px以上の画像が必要です。`;
+        }
+      }
+
+      // Validate max size (5MB)
+      if (sizeBytes > 5 * 1024 * 1024) {
+        isValidForGbp = false;
+        invalidReason = 'ファイルサイズが5MBを超えています。Googleマイビジネスの仕様上、5MB以下の画像が必要です。';
+      }
+
       return {
         id: file.id || '',
         name: file.name || '無題の写真',
@@ -450,6 +502,10 @@ async function fetchDriveFilesWithSubfolders(auth: any, rootFolderId: string): P
         mimeType: file.mimeType || 'image/jpeg',
         size: sizeMB,
         createdTime: file.createdTime || new Date().toISOString(),
+        width,
+        height,
+        isValidForGbp,
+        invalidReason,
       };
     });
 
@@ -659,8 +715,6 @@ app.get('/api/shops/:shopId/dashboard', async (req, res) => {
 
     // Determine photo stock count
     let imageCount = mockDriveFiles.length;
-    let firstFileId = mockDriveFiles.length > 0 ? mockDriveFiles[0].id : null;
-    let driveFileIds: string[] = mockDriveFiles.slice(0, 3).map(f => f.id);
     let driveFilesList: DriveFileItem[] = mockDriveFiles;
 
     const auth = getGoogleAuthClient();
@@ -668,30 +722,32 @@ app.get('/api/shops/:shopId/dashboard', async (req, res) => {
       try {
         const liveFiles = await fetchDriveFilesWithSubfolders(auth, shop.google_drive_folder_id);
         if (liveFiles.length > 0) {
-          imageCount = liveFiles.length;
           driveFilesList = liveFiles;
-          firstFileId = liveFiles[0].id || null;
-          driveFileIds = liveFiles.slice(0, 3).map(f => f.id || '');
         } else {
-          imageCount = 0;
           driveFilesList = [];
-          firstFileId = null;
-          driveFileIds = [];
         }
       } catch (e) {
         console.log('⚠️ Failed to fetch live Drive images for dashboard, using fallback count.');
       }
     }
 
-    // Determine Posting Mode
+    const validDriveFiles = driveFilesList.filter(f => f.isValidForGbp !== false);
+    const invalidDriveFiles = driveFilesList.filter(f => f.isValidForGbp === false);
+    const validImageCount = validDriveFiles.length;
+    const invalidImageCount = invalidDriveFiles.length;
+    const totalImageCount = driveFilesList.length;
+
+    let firstFileId = validDriveFiles.length > 0 ? validDriveFiles[0].id : null;
+
+    // Determine Posting Mode based on VALID image stock
     let postingMode = 'TEXT_ONLY';
-    let postingModeLabel = '画像ストック0枚: テキストのみ投稿モード';
-    if (imageCount >= 10) {
+    let postingModeLabel = '有効画像0枚: テキストのみ投稿モード';
+    if (validImageCount >= 10) {
       postingMode = 'ALWAYS_IMAGE';
-      postingModeLabel = '画像ストック10枚以上: 画像連続投稿モード';
-    } else if (imageCount >= 1) {
+      postingModeLabel = `画像ストック${validImageCount}枚（10枚以上）: 画像連続投稿モード`;
+    } else if (validImageCount >= 1) {
       postingMode = 'ALTERNATING';
-      postingModeLabel = `画像ストック${imageCount}枚（1〜9枚）: 交互投稿モード (画像とテキストを日替わり)`;
+      postingModeLabel = `画像ストック${validImageCount}枚（1〜9枚）: 交互投稿モード (画像とテキストを日替わり)`;
     }
 
     // Count pending bad reviews (Requires alert & not replied)
@@ -828,7 +884,10 @@ app.get('/api/shops/:shopId/dashboard', async (req, res) => {
       shopName: shop.name,
       replyActive: shop.reply_active,
       postActive: shop.post_active,
-      imageCount,
+      imageCount: validImageCount,
+      totalImageCount,
+      invalidImageCount,
+      invalidImages: invalidDriveFiles.map(f => ({ id: f.id, name: f.name, reason: f.invalidReason, width: f.width, height: f.height })),
       postingMode,
       postingModeLabel,
       pendingReviewsCount,
@@ -1593,7 +1652,8 @@ async function generateSingleDraft(
   let imageFileId: string | null = null;
   const selectedSubKeywords: string[] = [];
 
-  const imageCount = driveFiles ? driveFiles.length : 0;
+  const validDriveFiles = (driveFiles || []).filter(f => f.isValidForGbp !== false);
+  const imageCount = validDriveFiles.length;
   const isAlternating = imageCount >= 1 && imageCount < 10;
   const shouldBeTextOnly = forceTextOnly || (isAlternating && dayIndex % 2 === 1);
 
@@ -1604,13 +1664,13 @@ async function generateSingleDraft(
     selectedSubKeywords.push(...shuffled.slice(0, Math.min(count, shuffled.length)));
   }
 
-  // 2. Intelligent Image Selection with Subfolder Matching & Safe Root Fallback
-  if (driveFiles && driveFiles.length > 0 && !shouldBeTextOnly) {
+  // 2. Intelligent Image Selection with Subfolder Matching & Safe Root Fallback (VALID images only)
+  if (validDriveFiles.length > 0 && !shouldBeTextOnly) {
     const subfolderMatchedFiles: DriveFileItem[] = [];
 
     // Check if any drive file belongs to a subfolder that matches one of the selected sub-keywords
     if (selectedSubKeywords.length > 0) {
-      for (const file of driveFiles) {
+      for (const file of validDriveFiles) {
         if (file.folderName) {
           const normalizedFolderName = file.folderName.trim().toLowerCase();
           const isMatched = selectedSubKeywords.some((subKw: string) => {
@@ -1631,9 +1691,9 @@ async function generateSingleDraft(
       imageFileId = selectedFile.id || null;
       console.log(`📁 [サブフォルダ連動] サブキーワード [${selectedSubKeywords.join(', ')}] に一致するフォルダ「${selectedFile.folderName}」から画像(${selectedFile.id})を選択しました。`);
     } else {
-      // 100% Safe Root Fallback: Pick randomly from the entire pool (including root images)
-      const randomIndex = Math.floor(Math.random() * driveFiles.length);
-      const selectedFile = driveFiles[randomIndex];
+      // 100% Safe Root Fallback: Pick randomly from the entire valid pool
+      const randomIndex = Math.floor(Math.random() * validDriveFiles.length);
+      const selectedFile = validDriveFiles[randomIndex];
       imageFileId = selectedFile.id || null;
     }
   }
@@ -1980,7 +2040,7 @@ async function executeDailyPostRollover(shopId: string) {
         // Determine if there is an image to attach
         let mediaPayload = undefined;
         if (publishedPost.imageFileId) {
-          const apiBaseUrl = process.env.RENDER_EXTERNAL_URL || process.env.BACKEND_API_BASE_URL || 'http://localhost:3000';
+          const apiBaseUrl = process.env.RENDER_EXTERNAL_URL || process.env.BACKEND_API_BASE_URL || (process.env.RENDER_EXTERNAL_HOSTNAME ? `https://${process.env.RENDER_EXTERNAL_HOSTNAME}` : 'http://localhost:3000');
           const sourceUrl = `${apiBaseUrl}/api/shops/${shopId}/drive-images/${publishedPost.imageFileId}/view`;
           console.log(`📸 Attaching image to GBP post: ${sourceUrl}`);
           mediaPayload = [
@@ -2020,12 +2080,16 @@ async function executeDailyPostRollover(shopId: string) {
 
         // Determine if there is an action button (Call to Action) to attach (e.g. LP or Campaign URL)
         let callToActionPayload = undefined;
-        if (shop.keywords && shop.keywords.gbp_action_url) {
-          console.log(`🔗 Attaching Call-to-Action button to GBP post: ${shop.keywords.gbp_action_url}`);
-          callToActionPayload = {
-            actionType: 'LEARN_MORE',
-            url: shop.keywords.gbp_action_url
-          };
+        if (shop.keywords && shop.keywords.gbp_action_url && shop.keywords.gbp_action_url.trim()) {
+          const actionUrl = shop.keywords.gbp_action_url.trim();
+          const isGoogleShare = actionUrl.includes('share.google') || actionUrl.includes('maps.google') || actionUrl.includes('posts.gle') || actionUrl.includes('goo.gl/maps');
+          if (!isGoogleShare && (actionUrl.startsWith('http://') || actionUrl.startsWith('https://'))) {
+            console.log(`🔗 Attaching Call-to-Action button to GBP post: ${actionUrl}`);
+            callToActionPayload = {
+              actionType: 'LEARN_MORE',
+              url: actionUrl
+            };
+          }
         }
 
         const postTimeHour = (shop.keywords as any)?.post_time_hour ?? 9;

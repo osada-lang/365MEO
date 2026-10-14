@@ -57,6 +57,9 @@ interface DashboardData {
   replyActive: boolean;
   postActive: boolean;
   imageCount: number;
+  totalImageCount?: number;
+  invalidImageCount?: number;
+  invalidImages?: Array<{ id: string; name: string; reason?: string; width?: number; height?: number }>;
   postingMode: string;
   postingModeLabel: string;
   pendingReviewsCount: number;
@@ -76,6 +79,10 @@ interface DriveImage {
   size: string;
   createdTime: string;
   dataUrl?: string;
+  width?: number;
+  height?: number;
+  isValidForGbp?: boolean;
+  invalidReason?: string;
 }
 
 interface ReviewLog {
@@ -558,9 +565,35 @@ export default function App() {
       return;
     }
 
-    setUploadSelectedFile(file);
+    const lowerMime = file.type.toLowerCase();
+    const lowerName = file.name.toLowerCase();
+    const isJpg = lowerMime === 'image/jpeg' || lowerMime === 'image/jpg' || lowerName.endsWith('.jpg') || lowerName.endsWith('.jpeg');
+    const isPng = lowerMime === 'image/png' || lowerName.endsWith('.png');
+
+    if (!isJpg && !isPng) {
+      showBanner('error', 'MEO投稿に利用できる画像形式は JPEG (.jpg/.jpeg) または PNG (.png) のみです。');
+      return;
+    }
+
     const objectUrl = URL.createObjectURL(file);
-    setUploadPreviewUrl(objectUrl);
+    const img = new Image();
+    img.onload = () => {
+      if (img.naturalWidth < 250 || img.naturalHeight < 250) {
+        showBanner(
+          'error',
+          `Googleマイビジネスの仕様上、MEO投稿に使える画像は縦横250px以上である必要があります。（選択された画像: ${img.naturalWidth} × ${img.naturalHeight}px）`
+        );
+        setUploadSelectedFile(null);
+        setUploadPreviewUrl(null);
+        return;
+      }
+      setUploadSelectedFile(file);
+      setUploadPreviewUrl(objectUrl);
+    };
+    img.onerror = () => {
+      showBanner('error', '画像ファイルの読み込みに失敗しました。有効な画像を選択してください。');
+    };
+    img.src = objectUrl;
   };
 
   const handleExecuteUpload = async (e: React.FormEvent) => {
@@ -1335,9 +1368,20 @@ export default function App() {
                   <div className="flex items-start justify-between gap-4 text-xs font-bold border-t border-slate-50 pt-3">
                     <span className="text-slate-400 uppercase">画像ストック状況</span>
                     <span className={`font-black text-right ${dashboard.imageCount > 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
-                      {dashboard.imageCount > 0 ? (dashboard.imageCount >= 1000 ? '1000枚（これ以上読み込めません）' : `${dashboard.imageCount}枚（画像自動連携中）`) : '0枚（テキストのみ投稿）'}
+                      {dashboard.imageCount > 0
+                        ? `${dashboard.imageCount}枚（画像自動連携中）${dashboard.invalidImageCount && dashboard.invalidImageCount > 0 ? ` ※不適合 ${dashboard.invalidImageCount}枚 除外済` : ''}`
+                        : `0枚（テキストのみ投稿）${dashboard.invalidImageCount && dashboard.invalidImageCount > 0 ? ` ※不適合 ${dashboard.invalidImageCount}枚 除外済` : ''}`}
                     </span>
                   </div>
+
+                  {dashboard.invalidImageCount && dashboard.invalidImageCount > 0 && (
+                    <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 flex items-start gap-2.5 mt-2">
+                      <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                      <p className="text-[10px] text-amber-800 font-bold leading-relaxed">
+                        Google Drive内に解像度不足（250px未満）の画像が {dashboard.invalidImageCount}枚 あります。これらは自動投稿から安全に除外されています。「写真管理」タブからご確認ください。
+                      </p>
+                    </div>
+                  )}
                 </div>
               </div>
 
@@ -1734,6 +1778,22 @@ export default function App() {
               </div>
             </div>
 
+            {/* Invalid images warning banner */}
+            {photos.some(p => p.isValidForGbp === false) && (
+              <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 flex items-start gap-3 shadow-sm">
+                <AlertTriangle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+                <div className="space-y-1">
+                  <h4 className="text-xs font-black text-amber-900">
+                    Googleマイビジネスの投稿基準を満たさない画像が {photos.filter(p => p.isValidForGbp === false).length}枚 見つかりました
+                  </h4>
+                  <p className="text-[11px] font-bold text-amber-800/90 leading-relaxed">
+                    Googleマイビジネスの仕様上、MEO投稿には「縦横250px以上・5MB以下」の画像が必要です。
+                    以下の「⚠️ 投稿対象外」バッジが付いた画像は、MEO自動投稿から安全に除外されています。250px以上の高解像度写真に差し替えることをおすすめします。
+                  </p>
+                </div>
+              </div>
+            )}
+
             {/* Photos Grid & Filter Tabs */}
             <div className="space-y-2.5">
               <div className="flex items-center justify-between">
@@ -1814,6 +1874,15 @@ export default function App() {
                           <div className="absolute top-2 left-2 px-2 py-0.5 bg-indigo-600/90 backdrop-blur-sm text-white text-[9px] font-black rounded-lg shadow-sm flex items-center gap-1 border border-white/20 z-10">
                             <Folder className="w-2.5 h-2.5" />
                             <span className="truncate max-w-[90px]">{photo.folderName}</span>
+                          </div>
+                        )}
+                        {photo.isValidForGbp === false && (
+                          <div
+                            className="absolute top-2 right-2 px-2 py-0.5 bg-rose-600/95 backdrop-blur-sm text-white text-[9px] font-black rounded-lg shadow-sm flex items-center gap-1 border border-white/20 z-10"
+                            title={photo.invalidReason || '解像度不足（250px未満）'}
+                          >
+                            <AlertTriangle className="w-2.5 h-2.5" />
+                            <span>投稿対象外{photo.width && photo.height ? ` (${photo.width}×${photo.height})` : ''}</span>
                           </div>
                         )}
                         <button
