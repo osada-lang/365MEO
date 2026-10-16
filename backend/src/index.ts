@@ -1737,8 +1737,11 @@ async function generateSingleDraft(
 
   const selectedTheme = themes[dayIndex % themes.length];
 
-  // Get current date context in Japanese to naturally incorporate seasonal topics
-  const todayJp = new Date().toLocaleDateString('ja-JP', {
+  // Get current target date and day of week in JST calculated dynamically from dayIndex offset
+  const now = new Date();
+  const targetDate = new Date(now.getTime() + dayIndex * 24 * 60 * 60 * 1000);
+  const targetDateJp = targetDate.toLocaleDateString('ja-JP', {
+    timeZone: 'Asia/Tokyo',
     year: 'numeric',
     month: 'long',
     day: 'numeric',
@@ -1747,7 +1750,6 @@ async function generateSingleDraft(
 
   const prompt = `
     あなたは店舗「${shop.name}」のオーナー代理として、Googleマップ（MEO）および生成AI検索（AIO/LLMO）向けに最適化された、日替わりの店舗投稿テキスト（おしらせ/最新情報）を自動作成してください。
-    ※「ターゲット層へのアピール・トーンマナー」で英語等の言語指定がある場合は、必ずその指定された言語で執筆してください。特に指定がない場合は自然な日本語で執筆してください。
 
     【今回の投稿テーマ・検索意図】
     - テーマ名: ${selectedTheme.name}
@@ -1758,7 +1760,11 @@ async function generateSingleDraft(
     - 店舗名: ${shop.name}
     - 所在地住所情報（固定フッターより抜粋）: ${fixedFooter || '未設定'}
     - ターゲット層へのアピール・トーンマナー: ${customPrompt || '親しみやすく誠実なトーン。'}
-    - 今日の日付: ${todayJp}
+    - 本日の下書きの投稿予定日: ${targetDateJp}
+    - 投稿スロット番号: Day ${dayIndex} (${dayIndex === 0 ? '本日投稿分' : dayIndex === 1 ? '明日投稿分' : '明後日・3日後投稿分'})
+
+    【曜日別・日毎の言語切り替えルール（指定がある場合）】
+    ※「ターゲット層へのアピール・トーンマナー」において「月曜日は英語」「土日は英語」「1日おきに英語」などの曜日・日毎の言語条件指定がある場合は、上記の【本日の下書きの投稿予定日】の曜日や【投稿スロット番号】を元に、該当する日のみ指定された言語（英語等）、それ以外の日は自然な日本語で執筆してください。特に言語指定がない場合は自然な日本語で執筆してください。
 
     【作成の絶対ルール（厳守してください）】
     1. 結論ファースト（PREP法）の徹底:
