@@ -2084,8 +2084,18 @@ async function executeDailyPostRollover(shopId: string) {
         let callToActionPayload = undefined;
         if (shop.keywords && shop.keywords.gbp_action_url && shop.keywords.gbp_action_url.trim()) {
           const actionUrl = shop.keywords.gbp_action_url.trim();
-          const isGoogleShare = actionUrl.includes('share.google') || actionUrl.includes('maps.google') || actionUrl.includes('posts.gle') || actionUrl.includes('goo.gl/maps');
-          if (!isGoogleShare && (actionUrl.startsWith('http://') || actionUrl.startsWith('https://'))) {
+          const isGoogleMapsUrl = 
+            actionUrl.includes('maps.app.goo.gl') ||
+            actionUrl.includes('goo.gl/maps') ||
+            actionUrl.includes('maps.google.') ||
+            actionUrl.includes('google.com/maps') ||
+            actionUrl.includes('google.co.jp/maps') ||
+            actionUrl.includes('share.google') ||
+            actionUrl.includes('posts.gle');
+
+          if (isGoogleMapsUrl) {
+            console.warn(`⚠️ [GBP規約ガード] 店舗「${shop.name}」: Googleマップ自身のURLが詳細ボタンに設定されていたため、循環リンク違反・スパム判定を防ぐためボタン付与を安全にスキップしました。`);
+          } else if (actionUrl.startsWith('http://') || actionUrl.startsWith('https://')) {
             console.log(`🔗 Attaching Call-to-Action button to GBP post: ${actionUrl}`);
             callToActionPayload = {
               actionType: 'LEARN_MORE',
