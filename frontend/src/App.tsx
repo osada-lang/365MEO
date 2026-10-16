@@ -50,6 +50,7 @@ interface DraftPost {
   text: string;
   subKeywords: string[];
   imageFileId?: string | null;
+  promptType?: 'MEDICAL' | 'STANDARD';
 }
 
 interface DashboardData {
@@ -1511,27 +1512,38 @@ export default function App() {
                           <div key={d.dayIndex} className="bg-white border border-slate-200/80 rounded-xl p-4 shadow-sm space-y-3">
                             <div className="flex items-start justify-between gap-3">
                               <div>
-                                <span className={`text-[10px] font-black px-2 py-0.5 rounded-full ${
-                                  d.dayIndex === -1
-                                    ? 'bg-slate-100 text-slate-600 border border-slate-200'
-                                    : d.dayIndex === 0
-                                    ? (dashboard.draftPosts.some(x => x.dayIndex === -1)
-                                      ? 'bg-indigo-50 text-indigo-700 border border-indigo-100'
-                                      : 'bg-rose-50 text-rose-700 border border-rose-100')
-                                    : d.dayIndex === 1
-                                    ? (dashboard.draftPosts.some(x => x.dayIndex === -1)
-                                      ? 'bg-emerald-50 text-emerald-700 border border-emerald-100'
-                                      : 'bg-indigo-50 text-indigo-700 border border-indigo-100')
-                                    : 'bg-emerald-50 text-emerald-700 border border-emerald-100'
-                                }`}>
-                                  {d.dayIndex === -1
-                                    ? '本日投稿済み 🟢'
-                                    : d.dayIndex === 0
-                                    ? (dashboard.draftPosts.some(x => x.dayIndex === -1) ? '明日投稿予定' : '本日投稿予定')
-                                    : d.dayIndex === 1
-                                    ? (dashboard.draftPosts.some(x => x.dayIndex === -1) ? '明後日投稿予定' : '明日投稿予定')
-                                    : (dashboard.draftPosts.some(x => x.dayIndex === -1) ? '明々後日投稿予定' : '明後日投稿予定')}
-                                </span>
+                                <div className="flex flex-wrap items-center gap-1.5">
+                                  <span className={`text-[10px] font-black px-2 py-0.5 rounded-full ${
+                                    d.dayIndex === -1
+                                      ? 'bg-slate-100 text-slate-600 border border-slate-200'
+                                      : d.dayIndex === 0
+                                      ? (dashboard.draftPosts.some(x => x.dayIndex === -1)
+                                        ? 'bg-indigo-50 text-indigo-700 border border-indigo-100'
+                                        : 'bg-rose-50 text-rose-700 border border-rose-100')
+                                      : d.dayIndex === 1
+                                      ? (dashboard.draftPosts.some(x => x.dayIndex === -1)
+                                        ? 'bg-emerald-50 text-emerald-700 border border-emerald-100'
+                                        : 'bg-indigo-50 text-indigo-700 border border-indigo-100')
+                                      : 'bg-emerald-50 text-emerald-700 border border-emerald-100'
+                                  }`}>
+                                    {d.dayIndex === -1
+                                      ? '本日投稿済み 🟢'
+                                      : d.dayIndex === 0
+                                      ? (dashboard.draftPosts.some(x => x.dayIndex === -1) ? '明日投稿予定' : '本日投稿予定')
+                                      : d.dayIndex === 1
+                                      ? (dashboard.draftPosts.some(x => x.dayIndex === -1) ? '明後日投稿予定' : '明日投稿予定')
+                                      : (dashboard.draftPosts.some(x => x.dayIndex === -1) ? '明々後日投稿予定' : '明後日投稿予定')}
+                                  </span>
+                                  {d.promptType === 'MEDICAL' ? (
+                                    <span className="text-[10px] font-black bg-teal-50 text-teal-700 border border-teal-200 px-2 py-0.5 rounded-full">
+                                      🩺 医療用プロンプト (ファクトチェック済)
+                                    </span>
+                                  ) : (
+                                    <span className="text-[10px] font-bold bg-slate-100 text-slate-600 px-2 py-0.5 rounded-full">
+                                      通常プロンプト
+                                    </span>
+                                  )}
+                                </div>
                                 <h4 className="text-xs font-black text-slate-800 mt-1.5">
                                   {d.dayIndex === -1
                                     ? '本日投稿済みの下書き'

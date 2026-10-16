@@ -5,6 +5,7 @@ import * as path from 'path';
 import stream from 'stream';
 import { google } from 'googleapis';
 import { Client } from '@line/bot-sdk';
+import Anthropic from '@anthropic-ai/sdk';
 import { prisma } from './services/db';
 import { ReviewHandlerService, ReviewEvent } from './services/review-handler';
 
@@ -665,9 +666,9 @@ async function initializeShopKeywords(shop: any, driveFilesList: DriveFileItem[]
     const day1 = await generateSingleDraft(dummyShop, 1, driveFilesList);
     const day2 = await generateSingleDraft(dummyShop, 2, driveFilesList);
     draftPostsArr = [
-      { dayIndex: 0, title: '今日投稿予定の下書き (Day 0)', text: day0.text, subKeywords: day0.subKeywords, imageFileId: day0.imageFileId || null },
-      { dayIndex: 1, title: '明日投稿予定の下書き (Day 1)', text: day1.text, subKeywords: day1.subKeywords, imageFileId: day1.imageFileId || null },
-      { dayIndex: 2, title: '明後日投稿予定の下書き (Day 2)', text: day2.text, subKeywords: day2.subKeywords, imageFileId: day2.imageFileId || null },
+      { dayIndex: 0, title: '今日投稿予定の下書き (Day 0)', text: day0.text, subKeywords: day0.subKeywords, imageFileId: day0.imageFileId || null, promptType: day0.promptType },
+      { dayIndex: 1, title: '明日投稿予定の下書き (Day 1)', text: day1.text, subKeywords: day1.subKeywords, imageFileId: day1.imageFileId || null, promptType: day1.promptType },
+      { dayIndex: 2, title: '明後日投稿予定の下書き (Day 2)', text: day2.text, subKeywords: day2.subKeywords, imageFileId: day2.imageFileId || null, promptType: day2.promptType },
     ];
   } catch (genErr) {
     console.warn('⚠️ Initial draft generation during setup failed, using placeholder drafts:', genErr);
@@ -825,9 +826,9 @@ app.get('/api/shops/:shopId/dashboard', async (req, res) => {
           const day2 = await generateSingleDraft(shop, 2, driveFilesList);
 
           draftPostsArr = [
-            { dayIndex: 0, title: '今日投稿予定の下書き (Day 0)', text: day0.text, subKeywords: day0.subKeywords, imageFileId: day0.imageFileId || null },
-            { dayIndex: 1, title: '明日投稿予定の下書き (Day 1)', text: day1.text, subKeywords: day1.subKeywords, imageFileId: day1.imageFileId || null },
-            { dayIndex: 2, title: '明後日投稿予定の下書き (Day 2)', text: day2.text, subKeywords: day2.subKeywords, imageFileId: day2.imageFileId || null },
+            { dayIndex: 0, title: '今日投稿予定の下書き (Day 0)', text: day0.text, subKeywords: day0.subKeywords, imageFileId: day0.imageFileId || null, promptType: day0.promptType },
+            { dayIndex: 1, title: '明日投稿予定の下書き (Day 1)', text: day1.text, subKeywords: day1.subKeywords, imageFileId: day1.imageFileId || null, promptType: day1.promptType },
+            { dayIndex: 2, title: '明後日投稿予定の下書き (Day 2)', text: day2.text, subKeywords: day2.subKeywords, imageFileId: day2.imageFileId || null, promptType: day2.promptType },
           ];
 
           // Save to database
@@ -1636,18 +1637,118 @@ app.post('/api/shops/:shopId/test-line-alert', async (req, res) => {
   }
 });
 
+// Interface for Medical Fact Check result
+interface FactCheckResult {
+  passed: boolean;
+  reason: string;
+  issues: string[];
+  correctionAdvice: string;
+}
+
+// Helper to run fact check using Anthropic Claude (claude-3-5-haiku / claude-3-haiku)
+async function factCheckMedicalPost(draftText: string, shopName: string): Promise<FactCheckResult> {
+  const claudeApiKey = process.env.CLAUDE_API_KEY || process.env.ANTHROPIC_API_KEY;
+  if (!claudeApiKey) {
+    console.warn('⚠️ CLAUDE_API_KEY is not set. Defaulting to passed for medical fact check.');
+    return { passed: true, reason: 'CLAUDE_API_KEY未設定のためスキップ', issues: [], correctionAdvice: '' };
+  }
+
+  const prompt = `あなたは医療法・医療広告ガイドライン・薬機法（医薬品医療機器等法）・柔道整復師法およびGoogleビジネスプロフィールポリシーの専門審査官です。
+以下のGoogleマップ（MEO）向け医療・健康関連投稿テキストを厳格にファクトチェックおよびコンプライアンス審査してください。対象店舗: 「${shopName}」
+
+【審査基準（NG判定条件）】
+1. 治癒・効果効能の断定・保証:
+   「絶対に治る」「必ず改善する」「完全に治す」「100%安全」「副作用がない」「確実に効く」「根本改善を保証」などの断定・保証表現が含まれていないか。
+2. 誇大・最高級・比較表現:
+   「地域No.1」「最高峰」「唯一」「神の手」「完璧」「他院より優れている」などの客観的根拠のない最上級・比較表現が含まれていないか。
+3. 虚偽・未確認の医学的断定:
+   特定の症状から病名を勝手に確定させていたり、医学的根拠のない予防・治療効果、虚偽の専門資格や症例実績を創作していないか。
+4. 広告ガイドライン・法令抵触:
+   医師の診断と施術・服薬指導の混同、処方薬の無断中止勧奨、承認外効能の標榜など、法令やガイドラインに抵触する表現がないか。
+5. 形式ルール:
+   最後に指定CTA「『詳細』ボタン、またはプロフィールのウェブサイトリンクからお気軽にお問い合わせください。」が含まれており、過度な不安煽りや不適切なマークダウン記号（**や#など）・絵文字がないか。
+
+【審査対象テキスト】
+${draftText}
+
+【出力フォーマット】
+必ず以下の有効なJSON形式のみを出力してください（マークダウンのコードブロックや余分なテキストは一切含めないでください）。
+{
+  "passed": true または false,
+  "reason": "審査結果の要約（50文字以内）",
+  "issues": ["NG判定された具体的な問題箇所や不適切表現（合格の場合は空配列）"],
+  "correctionAdvice": "再生成時に修正すべき具体的なアドバイス（合格の場合は空文字）"
+}`;
+
+  try {
+    const anthropic = new Anthropic({ apiKey: claudeApiKey });
+    const response = await anthropic.messages.create({
+      model: 'claude-3-5-haiku-20241022',
+      max_tokens: 1000,
+      temperature: 0.2,
+      messages: [{ role: 'user', content: prompt }],
+    });
+
+    const contentText = response.content[0].type === 'text' ? response.content[0].text : '';
+    const cleanJson = contentText.trim().replace(/^```json\s*/i, '').replace(/^```\s*/i, '').replace(/\s*```$/i, '').trim();
+    const parsed = JSON.parse(cleanJson);
+
+    return {
+      passed: typeof parsed.passed === 'boolean' ? parsed.passed : true,
+      reason: parsed.reason || '',
+      issues: Array.isArray(parsed.issues) ? parsed.issues : [],
+      correctionAdvice: parsed.correctionAdvice || '',
+    };
+  } catch (err: any) {
+    console.error('❌ Claude fact check API error:', err.message || err);
+    return { passed: true, reason: '審査API通信エラーのためフォールバック通過', issues: [], correctionAdvice: '' };
+  }
+}
+
+async function generateTextFromGemini(genAI: any, promptText: string): Promise<string> {
+  const model = genAI.getGenerativeModel({ model: 'gemini-3.6-flash' });
+  try {
+    const result = await model.generateContent(promptText);
+    const response = await result.response;
+    return response.text().trim().replace(/```/g, '');
+  } catch (err: any) {
+    console.warn('⚠️ gemini-3.6-flash failed or was under heavy load. Falling back to stable gemini-3.5-flash:', err.message || err);
+    const fallbackModel = genAI.getGenerativeModel({ model: 'gemini-3.5-flash' });
+    const result = await fallbackModel.generateContent(promptText);
+    const response = await result.response;
+    return response.text().trim().replace(/```/g, '');
+  }
+}
+
+async function checkIsMedicalShop(shop: any): Promise<boolean> {
+  if (typeof shop.is_medical === 'boolean') {
+    return shop.is_medical;
+  }
+  try {
+    const res: any[] = await prisma.$queryRawUnsafe(
+      'SELECT is_medical FROM "Shop" WHERE id = $1 LIMIT 1',
+      shop.id
+    );
+    if (res.length > 0 && typeof res[0].is_medical === 'boolean') {
+      return res[0].is_medical;
+    }
+  } catch (e) {}
+  return false;
+}
+
 // Helper to generate a single day's MEO draft post using Gemini AI
 async function generateSingleDraft(
   shop: any,
   dayIndex: number,
   driveFiles?: DriveFileItem[],
   forceTextOnly: boolean = false
-): Promise<{ text: string, subKeywords: string[], imageFileId: string | null }> {
+): Promise<{ text: string, subKeywords: string[], imageFileId: string | null, promptType: 'MEDICAL' | 'STANDARD' }> {
   const mainKeywords: string[] = JSON.parse(shop.keywords?.main_keywords || '[]');
   const subKeywords: string[] = JSON.parse(shop.keywords?.sub_keywords || '[]');
   const customPrompt = shop.keywords?.custom_prompt || '';
   const hpUrl = shop.keywords?.hp_url || '';
   const fixedFooter = shop.keywords?.fixed_footer || '';
+  const isMedicalShop = await checkIsMedicalShop(shop);
 
   let imageFileId: string | null = null;
   const selectedSubKeywords: string[] = [];
@@ -1705,10 +1806,9 @@ async function generateSingleDraft(
 
   const { GoogleGenerativeAI } = require('@google/generative-ai');
   const genAI = new GoogleGenerativeAI(geminiApiKey);
-  const model = genAI.getGenerativeModel({ model: 'gemini-3.6-flash' });
 
-  // 日替わりで異なる「検索意図・文脈テーマ」を決定 (dayIndexを利用)
-  const themes = [
+  // Standard Themes
+  const standardThemes = [
     {
       name: "悩み解決型 (Trouble Resolution)",
       focus: "ターゲット層特有の具体的かつ代表的なお悩み（例：集客、美容、サービス選び、各種不便など、その店舗が解決できるお悩みや課題）を切り口にし、どのようなアプローチでそれを根本からケア・解決・サポートしていくのかを詳しく語る構成。"
@@ -1735,9 +1835,34 @@ async function generateSingleDraft(
     }
   ];
 
-  const selectedTheme = themes[dayIndex % themes.length];
+  // Medical / Healthcare Specific Themes (YMYL Compliant)
+  const medicalThemes = [
+    {
+      name: "症状・健康悩みサポート型 (Health & Symptom Support)",
+      focus: "季節の変わり目の体調変化、日常の健康不安、お薬の飲み合わせなどのお悩みに対して、専門知識に基づいて丁寧に寄り添い、相談・受診を案内する構成。"
+    },
+    {
+      name: "診療・調剤サービス紹介型 (Medical & Dispensing Services)",
+      focus: "実施している診療案内、処方箋事前受付、一包化調剤、訪問服薬指導、健康相談など、提供しているサービスの特徴や利用メリットを客観的に解説する構成。"
+    },
+    {
+      name: "施設・受診シチュエーション型 (Visit & Consultation Context)",
+      focus: "「お仕事帰りに立ち寄りたい」「子育て中で時間が取れない」「急な体調不良の時に」など、具体的な受診・利用場面に焦点を当て、通いやすさや安心できる環境をアピールする構成。"
+    },
+    {
+      name: "医療・お薬よくある質問回答型 (Medical & Pharmacy FAQ)",
+      focus: "患者様からよく受ける代表的な疑問（処方箋の有効期限、お薬の保管方法、受診の流れなど）に、わかりやすく客観的に答える構成。"
+    },
+    {
+      name: "専門性・かかりつけのこだわり提示型 (Expertise & Care Commitment)",
+      focus: "丁寧な服薬指導、分かりやすい病状説明、プライバシーへの配慮、地域のかかりつけとしての誠実な姿勢について客観的な事実に基づいて解説する構成。"
+    },
+    {
+      name: "年代・お悩み別健康アピール型 (Patient-Centered Care)",
+      focus: "ご高齢の方、働くビジネスパーソン、お子様連れの親御様など、対象に合わせた安心の医療・調剤サポートを具体的に語る構成。"
+    }
+  ];
 
-  // Get current target date and day of week in JST calculated dynamically from dayIndex offset
   const now = new Date();
   const targetDate = new Date(now.getTime() + dayIndex * 24 * 60 * 60 * 1000);
   const targetDateJp = targetDate.toLocaleDateString('ja-JP', {
@@ -1748,7 +1873,10 @@ async function generateSingleDraft(
     weekday: 'long'
   });
 
-  const prompt = `
+  // Prompt Builders
+  const buildStandardPrompt = () => {
+    const selectedTheme = standardThemes[dayIndex % standardThemes.length];
+    return `
     あなたは店舗「${shop.name}」のオーナー代理として、Googleマップ（MEO）および生成AI検索（AIO/LLMO）向けに最適化された、日替わりの店舗投稿テキスト（おしらせ/最新情報）を自動作成してください。
 
     【今回の投稿テーマ・検索意図】
@@ -1807,29 +1935,160 @@ async function generateSingleDraft(
         本文の中には、ホームページURL、電話番号、アクションボタンの文言（「詳細はこちら」「今すぐ予約」など）、住所、店舗名のフッター署名、および絵文字やマークダウン記号（**、#、*など）は【絶対に】含めないでください。純粋な文章テキストと「・」マーク、改行のみで出力してください。
 
     返される内容は自動作成した完成本文のみとし、説明、挨拶、マークダウン装飾（\`\`\`など）は一切含めないでください。`;
+  };
 
-  let generatedText = '';
-  try {
-    const result = await model.generateContent(prompt);
-    const response = await result.response;
-    generatedText = response.text().trim().replace(/```/g, '');
-  } catch (err: any) {
-    console.warn('⚠️ gemini-3.6-flash failed or was under heavy load. Falling back to stable gemini-3.5-flash:', err.message || err);
-    try {
-      const fallbackModel = genAI.getGenerativeModel({ model: 'gemini-3.5-flash' });
-      const result = await fallbackModel.generateContent(prompt);
-      const response = await result.response;
-      generatedText = response.text().trim().replace(/```/g, '');
-    } catch (fallbackErr: any) {
-      console.error('❌ Both gemini-3.6-flash and gemini-3.5-flash failed:', fallbackErr.message || fallbackErr);
-      throw fallbackErr;
+  const buildMedicalPrompt = (feedbackAdvice: string = '') => {
+    const selectedTheme = medicalThemes[dayIndex % medicalThemes.length];
+    return `
+    # GBP最新情報投稿｜YMYL対応マスタープロンプト Ver1.0
+
+    あなたは店舗「${shop.name}」のオーナー代理として、Googleマップ（MEO）および生成AI検索（AIO/LLMO）向けに最適化された、日替わりの店舗投稿テキスト（おしらせ／最新情報）を自動作成してください。
+
+    対象は接骨院・整骨院・クリニック・医院・調剤薬局・薬局などの医療・健康関連事業者です。
+    検索ユーザーの悩み・疑問・検索意図に対応しながら、店舗名・地域名・診療内容・施術内容・提供サービスを明確に伝えてください。
+    ただし、MEOやAI検索への最適化を目的として、医学的に不正確な情報、誇大広告、根拠のない効果表現、存在しないサービスを作成してはいけません。
+    医療・健康分野では、情報の正確性、利用者の安全性、一次情報の信頼性、法令・広告ガイドラインへの適合を最優先としてください。
+
+    ${feedbackAdvice ? `\n【前回の審査指摘事項（厳守）】\n${feedbackAdvice}\n上記の指摘事項を必ず修正し、ガイドラインを厳格に遵守して再作成してください。\n` : ''}
+
+    ## 【今回の投稿テーマ・検索意図】
+    - テーマ名: ${selectedTheme.name}
+    - 執筆のフォーカス: ${selectedTheme.focus}
+    必ず今回のテーマの検索文脈・意図に合致する内容で執筆してください。ただし、テーマに含まれる症状名・疾患名・治療名・施術名などは、店舗の実際の対応範囲と照合し、適切な場合に限り使用してください。医学的な断定や未確認のサービス内容を追加してはいけません。
+
+    ## 【店舗基本情報】
+    - 店舗名: ${shop.name}
+    - 所在地住所情報（固定フッターより抜粋）: ${fixedFooter || '未設定'}
+    - ターゲット層へのアピール・トーンマナー: ${customPrompt || '親しみやすく誠実なトーン。'}
+    - 本日の下書きの投稿予定日: ${targetDateJp}
+    - 投稿スロット番号: Day ${dayIndex} (${dayIndex === 0 ? '本日投稿分' : dayIndex === 1 ? '明日投稿分' : '明後日・3日後投稿分'})
+
+    ## 【YMYL共通の最優先ルール（文章構成や文字数よりも優先します）】
+    ### 1. 医療・健康情報の正確性
+    - 症状名と疾患名を混同しない。
+    - 症状だけから病名や原因を断定しない。
+    - 治療や施術による改善・治癒を保証しない。
+    - 効果には個人差があることを前提とし、根拠のない効果表現を使用しない。
+    - 医学的根拠のない予防効果や治療効果を創作しない。未確認の医学情報を断定的に説明しない。
+    - 必要な場合は、適切な医療機関への相談や受診の重要性を簡潔に伝える。
+
+    ### 2. 医療広告・関連法令への配慮（禁止表現）
+    対象業種に応じて、医療法に基づく医療広告規制、柔道整復師法などの関係法令、医薬品医療機器等法（薬機法）、関連する広告ガイドラインおよびGoogleビジネスプロフィールのポリシーを考慮してください。
+    以下の表現を絶対に禁止します：
+    - 絶対に治る
+    - 必ず改善する
+    - 完全に治す
+    - 副作用がない
+    - 100％安全
+    - 地域No.1、最高、唯一など、根拠や広告上の適法性を確認できない優良性表現
+    - 他院・他店より優れていると断定する比較表現
+    - 患者・利用者の体験談を創作する表現
+    - 不安や恐怖を過度にあおる表現
+    - 確認できない症例数、改善率、実績、資格、設備の表現
+
+    ### 3. 一次情報の厳守
+    次の情報は、店舗から提供されている場合、または信頼できる店舗情報として確認できる場合のみ使用してください。
+    - 医師・薬剤師・柔道整復師などの資格、経歴
+    - 診療科目、施術内容、薬局サービス
+    - 専門的な取り組みや対応方針
+    - 検査、設備、機器
+    - 料金、保険適用条件
+    - 受付時間、予約方法、訪問対応
+    - 実績、数値、患者数
+    - 他の医療機関との連携体制
+    提供されていない一次情報、患者の声、診療実績、専門家の見解を創作してはいけません。
+
+    ### 4. 検索キーワードの安全性判定
+    メインキーワードとサブキーワードは、本文を生成する前に内部で確認してください。次の条件を満たすキーワードを優先して使用します：
+    - 今回のテーマと検索意図に関連する。
+    - 店舗の実際の対応内容と一致する。
+    - 医学的に不正確な意味を持たない。
+    - 広告規制上、不適切な効果保証や優良性表現にならない。
+    - 読者に誤解を与えない自然な日本語として使用できる。
+    不適切なキーワードは、必要に応じて正確な表現に置き換えるか、省略してください。
+
+    ### 5. 読者の不安への対応
+    検索ユーザーの悩みや不安に寄り添いながら、落ち着いた説明を行ってください。過度な不安をあおって来院や購入を促してはいけません。読者がサービス内容を理解し、相談・受診・利用の必要性を適切に判断できる文章を目指してください。
+
+    ## 【業種別YMYLルール】
+    店舗の名称、テーマ、提供情報から業種を判断し、該当するルールを適用してください：
+    - A. 接骨院・整骨院: 柔道整復師の業務範囲を超える医療行為を行っているように表現しない。医師による診断・治療と柔道整復師による施術を混同しない。骨折・脱臼・捻挫・打撲・挫傷などは実際の対応内容や適切な条件を確認して記述する。慢性的な肩こり・腰痛などを当然に保険適用される症状として説明しない。骨盤矯正や姿勢改善などについて医学的に確認できない効果を断定しない。
+    - B. クリニック・医院: 実際に標榜・提供している診療科目や診療内容のみ記述する。特定の症状から病名を確定させない。治療効果や検査結果を保証しない。医師の専門医資格や実績を推測しない。自由診療について効果・費用・リスク・副作用などの必要な広告情報を欠いた誘引的表現を作成しない。
+    - C. 調剤薬局・薬局: 実際に提供している処方箋受付、服薬相談、在宅対応などのサービスのみ記述する。薬剤師による服薬支援と医師による診断・処方を混同しない。医薬品の効能・効果を承認された範囲を超えて説明しない。医薬品の安全性や副作用の不存在を保証しない。個人の判断による処方薬の中止、増減、変更を勧めない。
+
+    ## 【作成の絶対ルール】
+    1. 結論ファースト（PREP法）の徹底:
+       文章の冒頭（最初の一文、30〜50文字程度）で、時候の挨拶などを省き、今回のテーマに対する結論を明確にしてください。原則として「主要キーワード／テーマ＋店舗名＋エリア名＋主要サービス」を自然な一文にまとめてください。ただし症状の改善、治療効果、予防効果などを断定する結論にはしないでください。最初の一文の直後には必ず空行を1行挟んでください。
+    2. 主語・エリア・サービス名の明確化（5W1Hの網羅）:
+       主語は必ず「${shop.name}」とし、エリア名は所在地住所情報（固定フッター）からのみ抽出し、住所情報がない場合は架空の地域名を創作せず汎用表現にしてください。
+    3. メインキーワードの含有:
+       指定メインキーワード [ ${mainKeywords.join(', ')} ] を自然な文脈に沿って含めてください（医学的不正確・誇大になる場合は安全な表現に調整）。
+    4. 本日の日替わりサブキーワード:
+       本日のサブキーワード [ ${selectedSubKeywords.join(', ')} ] を自然に盛り込んでください。
+    5. 曖昧な表現の排除と一次情報・数値の提示:
+       抽象的な形容詞や根拠のないアピールを避け、店舗が実際に提供している客観的・専門的な事実を具体的に記述してください。
+    6. 特徴・こだわりの箇条書き構造化（中盤）:
+       文章の中盤部分で、今回のテーマに関連する店舗の特徴・対応内容・サービス情報を、原則として3つの箇条書き（「・」マーク）で簡潔に整理してください。直前には説明・移行文を設け、その直後に空行を1行挟んでください。
+    7. アクション喚起（CTA）の固定配置（後半）:
+       文章の最後（箇条書きの後）の締めくくりのCTAとして、次の指定テキストを一言一句変更せず、固定の1文として出力してください：
+       「『詳細』ボタン、またはプロフィールのウェブサイトリンクからお気軽にお問い合わせください。」
+    8. 段落分けと空行の徹底:
+       一つの段落は1文〜最大2文程度（50〜100文字程度）を目安とし、各段落の間には必ず空行を1行挟んでください。
+    9. 文字数制限:
+       全体の本文は500文字程度（改行を除く）に収めてください。
+    10. 署名・連絡先・記号マークダウンの排除:
+        本文中にURL、電話番号、住所、店舗名のフッター署名、絵文字、マークダウン記号は含めず、純粋な文章テキストと「・」マーク、改行のみで出力してください。
+
+    返される内容は自動作成した完成本文のみとし、説明、挨拶、マークダウン装飾は一切含めないでください。`;
+  };
+
+  // Execution with Medical Fact-Check Loop or Standard Generation
+  if (isMedicalShop) {
+    console.log(`🩺 [医療モード起動] 店舗「${shop.name}」: 医療専用プロンプト (Gemini) & ファクトチェック審査 (Claude) を開始します...`);
+    let finalMedicalText = '';
+    let factCheckPassed = false;
+    let feedback = '';
+
+    for (let attempt = 1; attempt <= 2; attempt++) {
+      console.log(`📡 [医療プロンプト生成 試行 ${attempt}/2] 店舗「${shop.name}」`);
+      const medicalPrompt = buildMedicalPrompt(feedback);
+      const candidateText = await generateTextFromGemini(genAI, medicalPrompt);
+
+      console.log(`🔍 [Claude 医療ファクトチェック審査 試行 ${attempt}/2 実行中...]`);
+      const checkResult = await factCheckMedicalPost(candidateText, shop.name);
+
+      if (checkResult.passed) {
+        console.log(`✅ [医療ファクトチェック合格 (試行 ${attempt}/2)]: ${checkResult.reason || '適合'}`);
+        finalMedicalText = candidateText;
+        factCheckPassed = true;
+        break;
+      } else {
+        console.warn(`⚠️ [医療ファクトチェックNG (試行 ${attempt}/2)]: ${checkResult.reason} - 指摘: ${checkResult.issues.join(' / ')}`);
+        feedback = `【前回の審査で以下のNG指摘がありました。必ず修正しガイドラインを厳格に遵守してください】: ${checkResult.issues.join('、')}${checkResult.correctionAdvice ? ` (改善指示: ${checkResult.correctionAdvice})` : ''}`;
+      }
     }
+
+    if (factCheckPassed && finalMedicalText) {
+      return {
+        text: finalMedicalText,
+        subKeywords: selectedSubKeywords,
+        imageFileId,
+        promptType: 'MEDICAL',
+      };
+    }
+
+    console.warn(`🔄 [通常プロンプト自動フォールバック (試行 3/3)] 店舗「${shop.name}」: 医療ファクトチェックが2回連続NGとなったため、通常プロンプトにて安全に生成します。`);
   }
 
+  // Standard generation
+  const standardPrompt = buildStandardPrompt();
+  const standardText = await generateTextFromGemini(genAI, standardPrompt);
+
   return {
-    text: generatedText,
+    text: standardText,
     subKeywords: selectedSubKeywords,
     imageFileId,
+    promptType: 'STANDARD',
   };
 }
 
@@ -1893,9 +2152,9 @@ app.post('/api/shops/:shopId/draft-posts/regenerate', async (req, res) => {
       const day2 = await generateSingleDraft(shop, 2, driveFilesList);
 
       const nextDrafts = [
-        { dayIndex: 0, title: '今日投稿予定の下書き (Day 0)', text: day0.text, subKeywords: day0.subKeywords, imageFileId: day0.imageFileId || null },
-        { dayIndex: 1, title: '明日投稿予定の下書き (Day 1)', text: day1.text, subKeywords: day1.subKeywords, imageFileId: day1.imageFileId || null },
-        { dayIndex: 2, title: '明後日投稿予定の下書き (Day 2)', text: day2.text, subKeywords: day2.subKeywords, imageFileId: day2.imageFileId || null },
+        { dayIndex: 0, title: '今日投稿予定の下書き (Day 0)', text: day0.text, subKeywords: day0.subKeywords, imageFileId: day0.imageFileId || null, promptType: day0.promptType },
+        { dayIndex: 1, title: '明日投稿予定の下書き (Day 1)', text: day1.text, subKeywords: day1.subKeywords, imageFileId: day1.imageFileId || null, promptType: day1.promptType },
+        { dayIndex: 2, title: '明後日投稿予定の下書き (Day 2)', text: day2.text, subKeywords: day2.subKeywords, imageFileId: day2.imageFileId || null, promptType: day2.promptType },
       ];
 
       // Keep dayIndex: -1 if it exists
@@ -1924,6 +2183,7 @@ app.post('/api/shops/:shopId/draft-posts/regenerate', async (req, res) => {
         text: regenerated.text,
         subKeywords: regenerated.subKeywords,
         imageFileId: regenerated.imageFileId || null,
+        promptType: regenerated.promptType,
       };
 
       if (existingIdx !== -1) {
@@ -2203,6 +2463,7 @@ async function executeDailyPostRollover(shopId: string) {
     text: publishedPost.text,
     subKeywords: publishedPost.subKeywords,
     imageFileId: publishedPost.imageFileId || null,
+    promptType: publishedPost.promptType || 'STANDARD',
     publishedAt: new Date().toISOString(),
   };
 
@@ -2215,6 +2476,7 @@ async function executeDailyPostRollover(shopId: string) {
     text: draft1.text,
     subKeywords: draft1.subKeywords,
     imageFileId: draft1.imageFileId || null,
+    promptType: draft1.promptType || 'STANDARD',
   };
 
   const nextDay1 = {
@@ -2223,6 +2485,7 @@ async function executeDailyPostRollover(shopId: string) {
     text: draft2.text,
     subKeywords: draft2.subKeywords,
     imageFileId: draft2.imageFileId || null,
+    promptType: draft2.promptType || 'STANDARD',
   };
 
   // Check if we are in alternating mode (1 to 9 images) to alternate Day 2 image assignment based on Day 1 (draft2) status
@@ -2240,6 +2503,7 @@ async function executeDailyPostRollover(shopId: string) {
       text: newDay2Raw.text,
       subKeywords: newDay2Raw.subKeywords,
       imageFileId: newDay2Raw.imageFileId || null,
+      promptType: newDay2Raw.promptType || 'STANDARD',
     };
   } catch (aiErr: any) {
     console.error(`⚠️ [AI下書き生成エラー] 店舗「${shop.name}」のDay 2下書き自動生成に失敗しました（スライド処理は安全に継続します）:`, aiErr.message || aiErr);
@@ -2758,6 +3022,11 @@ app.listen(port, () => {
   console.log(`🚀 MEO SEIHA - Express API Server running on: http://localhost:${port}`);
   console.log(`📅 Started on: ${new Date().toLocaleString()}`);
   console.log(`================================================================================\n`);
+
+  // Ensure is_medical column exists in database
+  prisma.$executeRawUnsafe('ALTER TABLE "Shop" ADD COLUMN IF NOT EXISTS "is_medical" BOOLEAN DEFAULT false;')
+    .then(() => console.log('✅ Verified Shop.is_medical column in database.'))
+    .catch((e) => console.warn('⚠️ Could not auto-add is_medical column:', e.message || e));
 
   // ⏱️ Start Local Background Scheduler Fallback (Every 10 minutes & 15 seconds after startup)
   console.log('⏱️ [Internal Scheduler] Initializing internal fallback scheduler (10-minute intervals)...');

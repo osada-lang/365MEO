@@ -22,6 +22,7 @@ model Shop {
   line_user_id          String?
   reply_active          Boolean       @default(true)
   post_active           Boolean       @default(false)
+  post_start_date       DateTime?     @db.Date
   custom_review_prompt  String?
   created_at            DateTime      @default(now())
   updated_at            DateTime      @updatedAt

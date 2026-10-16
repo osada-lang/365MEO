@@ -18,6 +18,7 @@
     "test:optimization": "tsx src/tests/test-post-optimization.ts"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.135.0",
     "@google/generative-ai": "^0.11.3",
     "@line/bot-sdk": "^7.5.2",
     "@prisma/client": "^5.22.0",
