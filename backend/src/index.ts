@@ -430,6 +430,8 @@ async function fetchDriveFilesWithSubfolders(auth: any, rawFolderId: string): Pr
         q: `'${rootFolderId}' in parents and mimeType = 'application/vnd.google-apps.folder' and trashed = false`,
         fields: 'files(id, name)',
         pageSize: 100,
+        supportsAllDrives: true,
+        includeItemsFromAllDrives: true,
       });
       subfolders = subfolderRes.data.files || [];
       subfolders.forEach((f: any) => {
@@ -449,6 +451,8 @@ async function fetchDriveFilesWithSubfolders(auth: any, rawFolderId: string): Pr
       q: `(${parentQuery}) and (mimeType = 'image/jpeg' or mimeType = 'image/png' or mimeType = 'image/jpg') and trashed = false`,
       fields: 'files(id, name, mimeType, size, createdTime, parents, imageMediaMetadata)',
       pageSize: 1000,
+      supportsAllDrives: true,
+      includeItemsFromAllDrives: true,
     });
 
     const files = imageRes.data.files || [];
@@ -1146,6 +1150,7 @@ app.get('/api/shops/:shopId/drive-images/:fileId/view', async (req, res) => {
     const metadata = await drive.files.get({
       fileId,
       fields: 'mimeType',
+      supportsAllDrives: true,
     });
 
     res.setHeader('Content-Type', metadata.data.mimeType || 'image/jpeg');
@@ -1155,6 +1160,7 @@ app.get('/api/shops/:shopId/drive-images/:fileId/view', async (req, res) => {
     const fileRes = await drive.files.get({
       fileId,
       alt: 'media',
+      supportsAllDrives: true,
     }, { responseType: 'stream' });
 
     fileRes.data.pipe(res);
@@ -1177,15 +1183,18 @@ app.get('/api/shops/:shopId/drive-folders', async (req, res) => {
       return res.status(404).json({ error: '店舗が見つかりませんでした。' });
     }
 
-    if (!auth || !shop.google_drive_folder_id || shop.google_drive_folder_id === 'root') {
+    const folderId = extractGoogleDriveFolderId(shop.google_drive_folder_id);
+    if (!auth || !folderId || folderId === 'root') {
       return res.json({ folders: [] });
     }
 
     const drive = google.drive({ version: 'v3', auth });
     const subfolderRes = await drive.files.list({
-      q: `'${shop.google_drive_folder_id}' in parents and mimeType = 'application/vnd.google-apps.folder' and trashed = false`,
+      q: `'${folderId}' in parents and mimeType = 'application/vnd.google-apps.folder' and trashed = false`,
       fields: 'files(id, name)',
       pageSize: 100,
+      supportsAllDrives: true,
+      includeItemsFromAllDrives: true,
     });
 
     const folders = (subfolderRes.data.files || []).map((f: any) => ({
@@ -1259,7 +1268,7 @@ app.post('/api/shops/:shopId/drive-images/upload', async (req, res) => {
     }
 
     const drive = google.drive({ version: 'v3', auth });
-    let destinationFolderId = shop.google_drive_folder_id || 'root';
+    let destinationFolderId = extractGoogleDriveFolderId(shop.google_drive_folder_id) || 'root';
     let targetFolderName: string | undefined = undefined;
 
     // Handle new folder creation if specified
@@ -1273,6 +1282,7 @@ app.post('/api/shops/:shopId/drive-images/upload', async (req, res) => {
             parents: [destinationFolderId],
           },
           fields: 'id, name',
+          supportsAllDrives: true,
         });
         if (folderCreateRes.data.id) {
           destinationFolderId = folderCreateRes.data.id;
@@ -1284,7 +1294,7 @@ app.post('/api/shops/:shopId/drive-images/upload', async (req, res) => {
     } else if (targetFolderId && targetFolderId !== 'root') {
       destinationFolderId = targetFolderId;
       try {
-        const fMeta = await drive.files.get({ fileId: targetFolderId, fields: 'name' });
+        const fMeta = await drive.files.get({ fileId: targetFolderId, fields: 'name', supportsAllDrives: true });
         targetFolderName = fMeta.data.name?.trim();
       } catch (e) {}
     }
@@ -1305,6 +1315,7 @@ app.post('/api/shops/:shopId/drive-images/upload', async (req, res) => {
         body: bufferStream,
       },
       fields: 'id, name, mimeType, size, createdTime',
+      supportsAllDrives: true,
     });
 
     const file = uploadRes.data;
@@ -1394,7 +1405,7 @@ app.delete('/api/shops/:shopId/drive-images/:fileId', async (req, res) => {
 
     const drive = google.drive({ version: 'v3', auth });
     console.log(`🗑️ Deleting file with ID: ${fileId} from Google Drive...`);
-    await drive.files.delete({ fileId });
+    await drive.files.delete({ fileId, supportsAllDrives: true });
 
     return res.json({ success: true, fileId, isMock: false });
   } catch (error: any) {
