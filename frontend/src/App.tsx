@@ -1534,6 +1534,16 @@ export default function App() {
                                       ? (dashboard.draftPosts.some(x => x.dayIndex === -1) ? '明後日投稿予定' : '明日投稿予定')
                                       : (dashboard.draftPosts.some(x => x.dayIndex === -1) ? '明々後日投稿予定' : '明後日投稿予定')}
                                   </span>
+                                  {d.dayIndex !== -1 && (
+                                    <span className="text-[10px] font-bold text-slate-500 bg-slate-100 px-2 py-0.5 rounded-full border border-slate-200/80">
+                                      📅 {(() => {
+                                        const hasPostedToday = dashboard.draftPosts.some(x => x.dayIndex === -1);
+                                        const offset = hasPostedToday ? (d.dayIndex + 1) : d.dayIndex;
+                                        const target = new Date(Date.now() + offset * 24 * 60 * 60 * 1000);
+                                        return target.toLocaleDateString('ja-JP', { month: 'numeric', day: 'numeric', weekday: 'short' });
+                                      })()}
+                                    </span>
+                                  )}
                                   {d.promptType === 'MEDICAL' ? (
                                     <span className="text-[10px] font-black bg-teal-50 text-teal-700 border border-teal-200 px-2 py-0.5 rounded-full">
                                       🩺 医療用プロンプト (ファクトチェック済)
