@@ -1061,7 +1061,12 @@ app.post('/api/shops/:shopId/settings', async (req, res) => {
     };
 
     if (postStartDate !== undefined) {
-      updateData.post_start_date = postStartDate ? new Date(postStartDate) : null;
+      if (!postStartDate) {
+        updateData.post_start_date = null;
+      } else {
+        const dateStr = String(postStartDate).split('T')[0].trim();
+        updateData.post_start_date = new Date(`${dateStr}T00:00:00.000Z`);
+      }
     }
 
     if (googleLocationId !== undefined) {

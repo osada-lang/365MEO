@@ -1154,7 +1154,7 @@ export default function App() {
                               <div className="flex flex-wrap items-center gap-2 self-end sm:self-auto">
                                 {!shop.post_active && shop.post_start_date && (
                                   <span className="text-[9px] font-black bg-amber-50 text-amber-700 border border-amber-200 px-2 py-0.5 rounded-full">
-                                    ⏳ {new Date(shop.post_start_date).toLocaleDateString('ja-JP', { timeZone: 'Asia/Tokyo', year: 'numeric', month: '2-digit', day: '2-digit' })} 開始予定
+                                    ⏳ {String(shop.post_start_date).split('T')[0].replace(/-/g, '/')} 開始予定
                                   </span>
                                 )}
                                 <span className={`text-[9px] font-black uppercase px-2 py-0.5 rounded-full ${
