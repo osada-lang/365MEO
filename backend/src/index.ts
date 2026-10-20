@@ -1689,7 +1689,12 @@ ${draftText}
 
   if (claudeApiKey) {
     try {
-      const anthropic = new Anthropic({ apiKey: claudeApiKey });
+      const anthropic = new Anthropic({
+        apiKey: claudeApiKey,
+        defaultHeaders: claudeApiKey.startsWith('sk-ant-usr-')
+          ? { 'anthropic-workspace-id': process.env.ANTHROPIC_WORKSPACE_ID || 'wrkspc_01EhGaJ6J9wC4aaRtM3AcrE2' }
+          : undefined,
+      });
       const response = await anthropic.messages.create({
         model: 'claude-haiku-5-5',
         max_tokens: 1000,
