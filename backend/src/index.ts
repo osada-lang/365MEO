@@ -1656,13 +1656,9 @@ interface FactCheckResult {
   correctionAdvice: string;
 }
 
-// Helper to run fact check using Anthropic Claude (claude-3-5-haiku / claude-3-haiku)
+// Helper to run fact check using Anthropic Claude (claude-haiku-5-5) with Gemini secondary check fallback
 async function factCheckMedicalPost(draftText: string, shopName: string): Promise<FactCheckResult> {
   const claudeApiKey = process.env.CLAUDE_API_KEY || process.env.ANTHROPIC_API_KEY;
-  if (!claudeApiKey) {
-    console.warn('⚠️ CLAUDE_API_KEY is not set. Defaulting to passed for medical fact check.');
-    return { passed: true, reason: 'CLAUDE_API_KEY未設定のためスキップ', issues: [], correctionAdvice: '' };
-  }
 
   const prompt = `あなたは医療法・医療広告ガイドライン・薬機法（医薬品医療機器等法）・柔道整復師法およびGoogleビジネスプロフィールポリシーの専門審査官です。
 以下のGoogleマップ（MEO）向け医療・健康関連投稿テキストを厳格にファクトチェックおよびコンプライアンス審査してください。対象店舗: 「${shopName}」
@@ -1691,29 +1687,54 @@ ${draftText}
   "correctionAdvice": "再生成時に修正すべき具体的なアドバイス（合格の場合は空文字）"
 }`;
 
-  try {
-    const anthropic = new Anthropic({ apiKey: claudeApiKey });
-    const response = await anthropic.messages.create({
-      model: 'claude-3-5-haiku-20241022',
-      max_tokens: 1000,
-      temperature: 0.2,
-      messages: [{ role: 'user', content: prompt }],
-    });
+  if (claudeApiKey) {
+    try {
+      const anthropic = new Anthropic({ apiKey: claudeApiKey });
+      const response = await anthropic.messages.create({
+        model: 'claude-haiku-5-5',
+        max_tokens: 1000,
+        messages: [{ role: 'user', content: prompt }],
+      });
 
-    const contentText = response.content[0].type === 'text' ? response.content[0].text : '';
-    const cleanJson = contentText.trim().replace(/^```json\s*/i, '').replace(/^```\s*/i, '').replace(/\s*```$/i, '').trim();
-    const parsed = JSON.parse(cleanJson);
+      const contentText = response.content[0].type === 'text' ? response.content[0].text : '';
+      const cleanJson = contentText.trim().replace(/^```json\s*/i, '').replace(/^```\s*/i, '').replace(/\s*```$/i, '').trim();
+      const parsed = JSON.parse(cleanJson);
 
-    return {
-      passed: typeof parsed.passed === 'boolean' ? parsed.passed : true,
-      reason: parsed.reason || '',
-      issues: Array.isArray(parsed.issues) ? parsed.issues : [],
-      correctionAdvice: parsed.correctionAdvice || '',
-    };
-  } catch (err: any) {
-    console.error('❌ Claude fact check API error:', err.message || err);
-    return { passed: true, reason: '審査API通信エラーのためフォールバック通過', issues: [], correctionAdvice: '' };
+      return {
+        passed: typeof parsed.passed === 'boolean' ? parsed.passed : true,
+        reason: parsed.reason || '',
+        issues: Array.isArray(parsed.issues) ? parsed.issues : [],
+        correctionAdvice: parsed.correctionAdvice || '',
+      };
+    } catch (err: any) {
+      console.warn('⚠️ Claude fact check API warning, falling back to secondary AI checker:', err.message || err);
+    }
+  } else {
+    console.warn('⚠️ CLAUDE_API_KEY is not set on server. Running secondary AI fact check...');
   }
+
+  try {
+    const geminiApiKey = process.env.GEMINI_API_KEY;
+    if (geminiApiKey) {
+      const { GoogleGenerativeAI } = require('@google/generative-ai');
+      const genAI = new GoogleGenerativeAI(geminiApiKey);
+      const checkerModel = genAI.getGenerativeModel({ model: 'gemini-3.5-flash' });
+      const result = await checkerModel.generateContent(prompt);
+      const contentText = result.response.text();
+      const cleanJson = contentText.trim().replace(/^```json\s*/i, '').replace(/^```\s*/i, '').replace(/\s*```$/i, '').trim();
+      const parsed = JSON.parse(cleanJson);
+      return {
+        passed: typeof parsed.passed === 'boolean' ? parsed.passed : true,
+        reason: parsed.reason || '',
+        issues: Array.isArray(parsed.issues) ? parsed.issues : [],
+        correctionAdvice: parsed.correctionAdvice || '',
+      };
+    }
+  } catch (fallbackErr: any) {
+    console.error('❌ Secondary fact check error:', fallbackErr.message || fallbackErr);
+  }
+
+  return { passed: true, reason: '審査API通信エラーのためフォールバック通過', issues: [], correctionAdvice: '' };
 }
 
 async function generateTextFromGemini(genAI: any, promptText: string): Promise<string> {
