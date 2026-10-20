@@ -885,10 +885,48 @@ app.get('/api/shops/:shopId/dashboard', async (req, res) => {
       mapsUrl = 'https://maps.app.goo.gl/9Nm2XpdP4Jht7BJR8';
     }
 
+    let postStartDateStr: string | null = null;
+    let isWaitingForStartDate = false;
+    if (shop.post_start_date) {
+      const sParts = new Intl.DateTimeFormat('ja-JP', {
+        timeZone: 'Asia/Tokyo',
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+      }).formatToParts(new Date(shop.post_start_date));
+      const sYear = sParts.find(p => p.type === 'year')?.value;
+      const sMonth = sParts.find(p => p.type === 'month')?.value;
+      const sDay = sParts.find(p => p.type === 'day')?.value;
+      postStartDateStr = `${sYear}/${sMonth}/${sDay}`;
+      const startIso = `${sYear}-${sMonth}-${sDay}`;
+
+      const nParts = new Intl.DateTimeFormat('ja-JP', {
+        timeZone: 'Asia/Tokyo',
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+      }).formatToParts(new Date());
+      const nYear = nParts.find(p => p.type === 'year')?.value;
+      const nMonth = nParts.find(p => p.type === 'month')?.value;
+      const nDay = nParts.find(p => p.type === 'day')?.value;
+      const todayIso = `${nYear}-${nMonth}-${nDay}`;
+
+      if (todayIso < startIso) {
+        isWaitingForStartDate = true;
+      }
+    }
+
+    let nextPostTime = `本日 ${(shop.keywords as any)?.post_time_hour ?? 9}:00 予定`;
+    if (isWaitingForStartDate && postStartDateStr) {
+      nextPostTime = `${postStartDateStr} より開始予定 (朝 ${(shop.keywords as any)?.post_time_hour ?? 9}:00)`;
+    }
+
     return res.json({
       shopName: shop.name,
       replyActive: shop.reply_active,
       postActive: shop.post_active,
+      postStartDate: postStartDateStr,
+      isWaitingForStartDate,
       imageCount: validImageCount,
       totalImageCount,
       invalidImageCount,
@@ -896,7 +934,7 @@ app.get('/api/shops/:shopId/dashboard', async (req, res) => {
       postingMode,
       postingModeLabel,
       pendingReviewsCount,
-      nextPostTime: `本日 ${(shop.keywords as any)?.post_time_hour ?? 9}:00 予定`,
+      nextPostTime,
       previewImage,
       googleLocationId: shop.google_location_id,
       mapsUrl,
@@ -968,11 +1006,26 @@ app.get('/api/shops/:shopId/settings', async (req, res) => {
     const mainKeywords = shop.keywords ? JSON.parse(shop.keywords.main_keywords) : [];
     const subKeywords = shop.keywords ? JSON.parse(shop.keywords.sub_keywords) : [];
 
+    let postStartDateStr: string | null = null;
+    if (shop.post_start_date) {
+      const sParts = new Intl.DateTimeFormat('ja-JP', {
+        timeZone: 'Asia/Tokyo',
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+      }).formatToParts(new Date(shop.post_start_date));
+      const sYear = sParts.find(p => p.type === 'year')?.value;
+      const sMonth = sParts.find(p => p.type === 'month')?.value;
+      const sDay = sParts.find(p => p.type === 'day')?.value;
+      postStartDateStr = `${sYear}-${sMonth}-${sDay}`;
+    }
+
     return res.json({
       shopId: shop.id,
       shopName: shop.name,
       replyActive: shop.reply_active,
       postActive: shop.post_active,
+      postStartDate: postStartDateStr,
       customReviewPrompt: shop.custom_review_prompt || '',
       lineUserId: shop.line_user_id || '',
       keywords: {
@@ -997,7 +1050,7 @@ app.get('/api/shops/:shopId/settings', async (req, res) => {
 // POST /api/shops/:shopId/settings
 app.post('/api/shops/:shopId/settings', async (req, res) => {
   const { shopId } = req.params;
-  const { replyActive, postActive, customReviewPrompt, lineUserId, keywords, googleLocationId } = req.body;
+  const { replyActive, postActive, postStartDate, customReviewPrompt, lineUserId, keywords, googleLocationId } = req.body;
 
   try {
     const updateData: any = {
@@ -1006,6 +1059,10 @@ app.post('/api/shops/:shopId/settings', async (req, res) => {
       post_active: typeof postActive === 'boolean' ? postActive : true,
       line_user_id: lineUserId || null,
     };
+
+    if (postStartDate !== undefined) {
+      updateData.post_start_date = postStartDate ? new Date(postStartDate) : null;
+    }
 
     if (googleLocationId !== undefined) {
       updateData.google_location_id = googleLocationId
@@ -2953,8 +3010,37 @@ async function runBackgroundScheduler() {
         shop.keywords = await initializeShopKeywords(shop);
       }
 
+      // 📅 自動投稿開始予定日（post_start_date）の判定
+      let isWaitingForStartDate = false;
+      if (shop.post_start_date) {
+        const sParts = jstFormatter.formatToParts(new Date(shop.post_start_date));
+        const sYear = sParts.find(p => p.type === 'year')?.value;
+        const sMonth = sParts.find(p => p.type === 'month')?.value;
+        const sDay = sParts.find(p => p.type === 'day')?.value;
+        const startStr = `${sYear}-${sMonth}-${sDay}`;
+
+        if (todayStr < startStr) {
+          console.log(`⏳ [開始日待機中] 店舗「${shop.name}」: 投稿開始予定日（${startStr}）より前のため、自動投稿をスキップします（現在: ${todayStr}）。`);
+          isWaitingForStartDate = true;
+        } else {
+          const updateData: any = { post_start_date: null };
+          if (!shop.post_active) {
+            updateData.post_active = true;
+            shop.post_active = true;
+            console.log(`🎉 [自動投稿開始日到達] 店舗「${shop.name}」: 投稿開始予定日（${startStr}）を迎えたため、post_active を ON (true) に自動切り替えしました！（開始予約完了のため post_start_date をクリア）`);
+          } else {
+            console.log(`🎉 [自動投稿開始日到達] 店舗「${shop.name}」: 投稿開始予定日（${startStr}）を迎えたため、開始予約日（post_start_date）を完了クリアしました。`);
+          }
+          await prisma.shop.update({
+            where: { id: shop.id },
+            data: updateData
+          });
+          shop.post_start_date = null;
+        }
+      }
+
       // 1. Check for Daily Automated Posting
-      if (shop.post_active && shop.keywords) {
+      if (!isWaitingForStartDate && shop.post_active && shop.keywords) {
         const postTimeHour = (shop.keywords as any)?.post_time_hour ?? 9; // Default is 9 (9:00 AM)
 
         let isAlreadyPostedTodayInDb = false;
@@ -3104,10 +3190,11 @@ app.listen(port, () => {
   console.log(`📅 Started on: ${new Date().toLocaleString()}`);
   console.log(`================================================================================\n`);
 
-  // Ensure is_medical column exists in database
+  // Ensure is_medical and post_start_date columns exist in database
   prisma.$executeRawUnsafe('ALTER TABLE "Shop" ADD COLUMN IF NOT EXISTS "is_medical" BOOLEAN DEFAULT false;')
-    .then(() => console.log('✅ Verified Shop.is_medical column in database.'))
-    .catch((e) => console.warn('⚠️ Could not auto-add is_medical column:', e.message || e));
+    .then(() => prisma.$executeRawUnsafe('ALTER TABLE "Shop" ADD COLUMN IF NOT EXISTS "post_start_date" DATE;'))
+    .then(() => console.log('✅ Verified Shop.is_medical and Shop.post_start_date columns in database.'))
+    .catch((e) => console.warn('⚠️ Could not auto-add columns:', e.message || e));
 
   // ⏱️ Start Local Background Scheduler Fallback (Every 10 minutes & 15 seconds after startup)
   console.log('⏱️ [Internal Scheduler] Initializing internal fallback scheduler (10-minute intervals)...');

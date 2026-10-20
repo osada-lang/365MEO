@@ -41,6 +41,7 @@ interface ShopProfile {
   line_user_id: string | null;
   reply_active: boolean;
   post_active?: boolean;
+  post_start_date?: string | null;
   custom_review_prompt: string | null;
 }
 
@@ -57,6 +58,8 @@ interface DashboardData {
   shopName: string;
   replyActive: boolean;
   postActive: boolean;
+  postStartDate?: string | null;
+  isWaitingForStartDate?: boolean;
   imageCount: number;
   totalImageCount?: number;
   invalidImageCount?: number;
@@ -107,6 +110,7 @@ interface SettingsData {
   shopName: string;
   replyActive: boolean;
   postActive: boolean;
+  postStartDate?: string | null;
   customReviewPrompt: string;
   lineUserId: string;
   keywords: {
@@ -490,6 +494,12 @@ export default function App() {
       });
 
       if (res.ok) {
+        setShopsList(prev => prev.map(s => s.id === currentShop.id ? {
+          ...s,
+          reply_active: settings.replyActive,
+          post_active: settings.postActive,
+          post_start_date: settings.postStartDate || null,
+        } : s));
         showBanner('success', '設定をデータベースに正常に保存しました！');
       } else {
         showBanner('error', '設定の保存に失敗しました。');
@@ -1141,7 +1151,12 @@ export default function App() {
                                 <h3 className="text-xs font-black text-slate-900">{shop.name}</h3>
                                 <p className="text-[10px] text-slate-400 font-bold">{shop.email}</p>
                               </div>
-                              <div className="flex items-center gap-3 self-end sm:self-auto">
+                              <div className="flex flex-wrap items-center gap-2 self-end sm:self-auto">
+                                {!shop.post_active && shop.post_start_date && (
+                                  <span className="text-[9px] font-black bg-amber-50 text-amber-700 border border-amber-200 px-2 py-0.5 rounded-full">
+                                    ⏳ {new Date(shop.post_start_date).toLocaleDateString('ja-JP', { timeZone: 'Asia/Tokyo', year: 'numeric', month: '2-digit', day: '2-digit' })} 開始予定
+                                  </span>
+                                )}
                                 <span className={`text-[9px] font-black uppercase px-2 py-0.5 rounded-full ${
                                   shop.post_active ? 'bg-indigo-50 text-indigo-700 border border-indigo-100' : 'bg-slate-100 text-slate-500 border border-slate-200'
                                 }`}>
@@ -1348,8 +1363,14 @@ export default function App() {
                     <span className="w-2.5 h-2.5 rounded-full bg-indigo-500 animate-pulse"></span>
                     本日の自動投稿ステータス
                   </span>
-                  <span className="text-[10px] font-black bg-indigo-50 text-indigo-700 px-2 py-0.5 rounded-full">
-                    予約完了
+                  <span className={`text-[10px] font-black px-2 py-0.5 rounded-full ${
+                    dashboard.isWaitingForStartDate && dashboard.postStartDate
+                      ? 'bg-amber-50 text-amber-700 border border-amber-200'
+                      : 'bg-indigo-50 text-indigo-700'
+                  }`}>
+                    {dashboard.isWaitingForStartDate && dashboard.postStartDate
+                      ? `⏳ ${dashboard.postStartDate} 開始予定`
+                      : '予約完了'}
                   </span>
                 </div>
 
@@ -2022,6 +2043,33 @@ export default function App() {
                 <LayoutDashboard className="w-5 h-5 text-indigo-600" />
                 AI自動投稿・キーワード設定
               </h2>
+
+              {/* Scheduled Start Date */}
+              <div className="space-y-1.5 border-b border-slate-100/80 pb-4">
+                <label className="block text-[11px] font-black text-slate-400 tracking-wider uppercase">
+                  投稿開始予定日（指定日に自動でONになります）
+                </label>
+                <p className="text-[9px] text-slate-400 leading-normal font-bold">
+                  未来の日付を指定すると、その日になるまで自動投稿を待機し、当日を迎えた時点で自動的にスイッチをONに切り替えて投稿を開始します。（未設定の場合は即時対象）
+                </p>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="date"
+                    className="block w-full border border-slate-200 rounded-xl px-3 py-2.5 text-xs font-bold bg-slate-50/50 text-slate-900 focus:outline-none focus:ring-2 focus:ring-brandBlue-500"
+                    value={settings.postStartDate || ''}
+                    onChange={(e) => setSettings({ ...settings, postStartDate: e.target.value || null })}
+                  />
+                  {settings.postStartDate && (
+                    <button
+                      type="button"
+                      onClick={() => setSettings({ ...settings, postStartDate: null })}
+                      className="shrink-0 text-[10px] font-bold text-slate-500 hover:text-rose-600 bg-slate-100 hover:bg-rose-50 px-3 py-2.5 rounded-xl transition-colors"
+                    >
+                      クリア
+                    </button>
+                  )}
+                </div>
+              </div>
 
               {/* Daily Posting Hour Dropdown */}
               <div className="space-y-1.5 border-b border-slate-100/80 pb-4">
