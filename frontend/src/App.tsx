@@ -1827,11 +1827,12 @@ export default function App() {
                 <AlertTriangle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
                 <div className="space-y-1">
                   <h4 className="text-xs font-black text-amber-900">
-                    Googleマイビジネスの投稿基準を満たさない画像が {photos.filter(p => p.isValidForGbp === false).length}枚 見つかりました
+                    Googleビジネスプロフィールの投稿基準を満たさない画像が {photos.filter(p => p.isValidForGbp === false).length}枚 検出されました（自動除外中）
                   </h4>
                   <p className="text-[11px] font-bold text-amber-800/90 leading-relaxed">
-                    Googleマイビジネスの仕様上、MEO投稿には「縦横250px以上・5MB以下」の画像が必要です。
-                    以下の「⚠️ 投稿対象外」バッジが付いた画像は、MEO自動投稿から安全に除外されています。250px以上の高解像度写真に差し替えることをおすすめします。
+                    Googleの仕様上、投稿には「縦横250px以上・5MB以下」の画像が必要です。
+                    以下の「⚠️ 投稿対象外」バッジが付いた画像は、下書きの作成および自動投稿の対象から安全に除外されています。
+                    フォルダ内に画像が残ったままでもシステムや投稿の動作に一切問題はありませんが、投稿用として活用したい場合は、条件に合う画像（縦横250px以上・5MB以下）への差し替えをおすすめします。
                   </p>
                 </div>
               </div>
