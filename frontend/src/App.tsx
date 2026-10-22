@@ -1825,15 +1825,15 @@ export default function App() {
             {photos.some(p => p.isValidForGbp === false) && (
               <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 flex items-start gap-3 shadow-sm">
                 <AlertTriangle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
-                <div className="space-y-1">
+                <div className="space-y-1.5">
                   <h4 className="text-xs font-black text-amber-900">
                     Googleビジネスプロフィールの投稿基準を満たさない画像が {photos.filter(p => p.isValidForGbp === false).length}枚 検出されました（自動除外中）
                   </h4>
-                  <p className="text-[11px] font-bold text-amber-800/90 leading-relaxed">
-                    Googleの仕様上、投稿には「縦横250px以上・5MB以下」の画像が必要です。
-                    以下の「⚠️ 投稿対象外」バッジが付いた画像は、下書きの作成および自動投稿の対象から安全に除外されています。
-                    フォルダ内に画像が残ったままでもシステムや投稿の動作に一切問題はありませんが、投稿用として活用したい場合は、条件に合う画像（縦横250px以上・5MB以下）への差し替えをおすすめします。
-                  </p>
+                  <div className="text-[11px] font-bold text-amber-800/90 leading-relaxed space-y-1">
+                    <p>・Googleの仕様上、投稿には「縦横250px以上・5MB以下」の画像が必要です。</p>
+                    <p>・以下の「⚠️ 投稿対象外」バッジが付いた画像は、下書きの作成および自動投稿の対象から安全に除外されています。</p>
+                    <p>・フォルダ内に画像が残ったままでもシステムや投稿の動作に一切問題はありませんが、投稿用として活用したい場合は、条件に合う画像（縦横250px以上・5MB以下）への差し替えをおすすめします。</p>
+                  </div>
                 </div>
               </div>
             )}
