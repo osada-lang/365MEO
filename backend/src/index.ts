@@ -189,8 +189,14 @@ app.post('/api/auth/login', async (req, res) => {
   const { email, password, rememberMe } = req.body;
 
   try {
-    const shop = await prisma.shop.findUnique({
-      where: { email },
+    const normalizedEmail = (email || '').trim();
+    const shop = await prisma.shop.findFirst({
+      where: {
+        OR: [
+          { email: normalizedEmail },
+          { name: normalizedEmail }
+        ]
+      },
     });
 
     if (!shop || shop.password !== password) {

@@ -932,19 +932,20 @@ export default function App() {
             <form className="space-y-4.5" onSubmit={handleLogin}>
               <div>
                 <label className="block text-xs font-bold text-stripeInk-mute tracking-wider mb-1.5 uppercase">
-                  メールアドレス
+                  ログインID または メールアドレス
                 </label>
                 <div className="relative">
                   <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none">
                     <Mail className="h-4.5 w-4.5 text-stripeInk-mute" />
                   </div>
                   <input
-                    type="email"
+                    type="text"
                     required
+                    autoComplete="username"
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
                     className="block w-full pl-10 pr-3 py-2.5 border border-slate-200 rounded-xl bg-slate-50/60 placeholder-slate-400 text-sm text-stripeInk focus:outline-none focus:ring-2 focus:ring-stripeIndigo-500 focus:border-transparent transition-all"
-                    placeholder="email@example.com"
+                    placeholder="ログインID または メールアドレス"
                   />
                 </div>
               </div>
