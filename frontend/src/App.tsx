@@ -2046,33 +2046,6 @@ export default function App() {
                 AI自動投稿・キーワード設定
               </h2>
 
-              {/* Scheduled Start Date */}
-              <div className="space-y-1.5 border-b border-slate-100/80 pb-4">
-                <label className="block text-[11px] font-black text-slate-400 tracking-wider uppercase">
-                  投稿開始予定日（指定日に自動でONになります）
-                </label>
-                <p className="text-[9px] text-slate-400 leading-normal font-bold">
-                  未来の日付を指定すると、その日になるまで自動投稿を待機し、当日を迎えた時点で自動的にスイッチをONに切り替えて投稿を開始します。（未設定の場合は即時対象）
-                </p>
-                <div className="flex items-center gap-2">
-                  <input
-                    type="date"
-                    className="block w-full border border-slate-200 rounded-xl px-3 py-2.5 text-xs font-bold bg-slate-50/50 text-slate-900 focus:outline-none focus:ring-2 focus:ring-brandBlue-500"
-                    value={settings.postStartDate || ''}
-                    onChange={(e) => setSettings({ ...settings, postStartDate: e.target.value || null })}
-                  />
-                  {settings.postStartDate && (
-                    <button
-                      type="button"
-                      onClick={() => setSettings({ ...settings, postStartDate: null })}
-                      className="shrink-0 text-[10px] font-bold text-slate-500 hover:text-rose-600 bg-slate-100 hover:bg-rose-50 px-3 py-2.5 rounded-xl transition-colors"
-                    >
-                      クリア
-                    </button>
-                  )}
-                </div>
-              </div>
-
               {/* Daily Posting Hour Dropdown */}
               <div className="space-y-1.5 border-b border-slate-100/80 pb-4">
                 <label className="block text-[11px] font-black text-slate-400 tracking-wider uppercase">
