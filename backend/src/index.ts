@@ -761,12 +761,13 @@ app.get('/api/shops/:shopId/dashboard', async (req, res) => {
       postingModeLabel = `画像ストック${validImageCount}枚（1〜9枚）: 交互投稿モード (画像とテキストを日替わり)`;
     }
 
-    // Count pending bad reviews (Requires alert & not replied)
+    // Count pending bad reviews (Requires alert & not replied, not deleted/hidden)
     const pendingReviewsCount = await prisma.reviewLogs.count({
       where: {
         shop_id: shopId,
         star_rating: { lte: 2 },
         is_auto_replied: false,
+        is_hidden: false,
       }
     });
 
