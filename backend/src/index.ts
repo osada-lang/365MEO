@@ -1474,14 +1474,48 @@ app.delete('/api/shops/:shopId/drive-images/:fileId', async (req, res) => {
 
     const drive = google.drive({ version: 'v3', auth });
     console.log(`🗑️ Deleting file with ID: ${fileId} from Google Drive...`);
-    await drive.files.delete({ fileId, supportsAllDrives: true });
 
-    return res.json({ success: true, fileId, isMock: false });
+    try {
+      await drive.files.delete({ fileId, supportsAllDrives: true });
+      return res.json({ success: true, fileId, isMock: false });
+    } catch (deleteError: any) {
+      console.warn(`⚠️ files.delete failed (likely non-owned file). Attempting removeParents fallback:`, deleteError.message || deleteError);
+
+      // Fetch file's current parents to unlink it from the shop's folder hierarchy
+      const fileMeta = await drive.files.get({
+        fileId,
+        fields: 'id, parents',
+        supportsAllDrives: true,
+      });
+
+      const parents: string[] = fileMeta.data.parents || [];
+      const shopFolderId = extractGoogleDriveFolderId(shop.google_drive_folder_id);
+
+      let parentsToRemove = '';
+      if (shopFolderId && parents.includes(shopFolderId)) {
+        parentsToRemove = shopFolderId;
+      } else if (parents.length > 0) {
+        parentsToRemove = parents.join(',');
+      }
+
+      if (parentsToRemove) {
+        await drive.files.update({
+          fileId,
+          removeParents: parentsToRemove,
+          supportsAllDrives: true,
+          fields: 'id, parents',
+        });
+        console.log(`✅ [フォールバック除外成功] ファイルID: ${fileId} を親フォルダ [${parentsToRemove}] から安全に除外解除しました。`);
+        return res.json({ success: true, fileId, isMock: false, unlinkedOnly: true });
+      }
+
+      throw deleteError;
+    }
   } catch (error: any) {
     console.error('❌ Image deletion error:', error.message || error);
     const isPermissionError = error.message?.toLowerCase().includes('permission') || error.status === 403 || error.code === 403;
     const errorMsg = isPermissionError
-      ? 'この画像は別のGoogleアカウントが所有しているため、システムから削除できません。本人のGoogleドライブから直接削除してください。'
+      ? 'この画像は別のGoogleアカウントが所有しており、フォルダからの除外も行えませんでした。Googleドライブから直接削除してください。'
       : 'Google Driveからの画像削除に失敗しました。';
     return res.status(isPermissionError ? 403 : 500).json({ error: errorMsg });
   }
