@@ -188,6 +188,16 @@ export default function App() {
     const urlTab = urlParams.get('tab');
 
     if (urlToken) {
+      // 🔄 Clear old shop session immediately so that new store loads fresh without stale state
+      setCurrentShop(null);
+      setLoggedInUser(null);
+      setDashboard(null);
+      setSettings(null);
+      setPhotos([]);
+      setReviews([]);
+      setIsViewingShop(false);
+      setIsPageLoading(true);
+      localStorage.removeItem('userRole');
       localStorage.setItem('token', urlToken);
       setToken(urlToken);
       // Clean query parameters from URL for a clean address bar
@@ -236,9 +246,7 @@ export default function App() {
         if (res.ok) {
           const data = await res.json();
           setLoggedInUser(data.shop);
-          if (!currentShop) {
-            setCurrentShop(data.shop);
-          }
+          setCurrentShop(data.shop);
           setUserRole(data.shop.role);
           localStorage.setItem('userRole', data.shop.role);
           setIsViewingShop(data.shop.role !== 'ADMIN' && data.shop.role !== 'AGENCY');
