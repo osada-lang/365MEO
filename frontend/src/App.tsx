@@ -1418,7 +1418,7 @@ export default function App() {
                     <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 flex items-start gap-2.5 mt-2">
                       <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
                       <p className="text-[10px] text-amber-800 font-bold leading-relaxed">
-                        Google Drive内に解像度不足（250px未満）の画像が {dashboard.invalidImageCount}枚 あります。これらは自動投稿から安全に除外されています。「写真管理」タブからご確認ください。
+                        Google Drive内に投稿基準（縦横250px以上・5MB以下）を満たさない画像が {dashboard.invalidImageCount}枚 あります。これらは下書きや自動投稿から安全に自動除外されています。「画像ストック管理」タブからご確認ください。
                       </p>
                     </div>
                   )}
@@ -1941,7 +1941,7 @@ export default function App() {
                         {photo.isValidForGbp === false && (
                           <div
                             className="absolute top-2 right-2 px-2 py-0.5 bg-rose-600/95 backdrop-blur-sm text-white text-[9px] font-black rounded-lg shadow-sm flex items-center gap-1 border border-white/20 z-10"
-                            title={photo.invalidReason || '解像度不足（250px未満）'}
+                            title={photo.invalidReason || '投稿基準（縦横250px以上・5MB以下）不適合'}
                           >
                             <AlertTriangle className="w-2.5 h-2.5" />
                             <span>投稿対象外{photo.width && photo.height ? ` (${photo.width}×${photo.height})` : ''}</span>
