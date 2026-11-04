@@ -1960,7 +1960,8 @@ async function generateSingleDraft(
   let imageFileId: string | null = null;
   const selectedSubKeywords: string[] = [];
 
-  const validDriveFiles = (driveFiles || []).filter(f => f.isValidForGbp !== false);
+  const excludedIds = await getExcludedImageIds(shop.id);
+  const validDriveFiles = (driveFiles || []).filter(f => f.isValidForGbp !== false && !excludedIds.includes(f.id));
   const imageCount = validDriveFiles.length;
   const isAlternating = imageCount >= 1 && imageCount < 10;
   const shouldBeTextOnly = forceTextOnly || (isAlternating && dayIndex % 2 === 1);
@@ -2686,11 +2687,11 @@ async function executeDailyPostRollover(shopId: string) {
     }
   }
 
-  // Fetch Drive files with subfolders for intelligent keyword-folder matching
+  // Fetch Drive files with subfolders for intelligent keyword-folder matching (excluding logically deleted images)
   let driveFilesList: DriveFileItem[] = [];
   const auth = getGoogleAuthClient();
   if (auth && shop.google_drive_folder_id) {
-    driveFilesList = await fetchDriveFilesWithSubfolders(auth, shop.google_drive_folder_id);
+    driveFilesList = await fetchDriveFilesForShop(auth, shop.id, shop.google_drive_folder_id);
   }
 
   // 2. Perform the roll-over (Slide)
@@ -2762,12 +2763,13 @@ async function executeDailyPostRollover(shopId: string) {
   }
 
   const newDrafts = [nextDayMinus1, nextDay0, nextDay1, nextDay2];
+  const preservedDrafts = preserveDraftMeta(newDrafts, shop.keywords?.draft_posts);
 
   // Save back to database
   await prisma.shopKeywords.update({
     where: { shop_id: shopId },
     data: {
-      draft_posts: JSON.stringify(newDrafts)
+      draft_posts: JSON.stringify(preservedDrafts)
     }
   });
 
