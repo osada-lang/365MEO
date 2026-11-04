@@ -2200,7 +2200,7 @@ export default function App() {
                   <input
                     type="url"
                     className="block w-full border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold bg-slate-50/50 text-slate-900 focus:outline-none focus:ring-2 focus:ring-brandBlue-500"
-                    placeholder="https://thanx-create.com"
+                    placeholder="https://example.com"
                     value={settings.keywords.hpUrl || ''}
                     onChange={(e) => setSettings({
                       ...settings,
@@ -2219,7 +2219,7 @@ export default function App() {
                   <input
                     type="url"
                     className="block w-full border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold bg-slate-50/50 text-slate-900 focus:outline-none focus:ring-2 focus:ring-brandBlue-500"
-                    placeholder="https://thanx-create.com/lp-meo"
+                    placeholder="https://example.com/lp"
                     value={settings.keywords.gbpActionUrl || ''}
                     onChange={(e) => setSettings({
                       ...settings,

@@ -14,9 +14,9 @@ async function main() {
     await prisma.shop.create({
       data: {
         id: 'admin-seiha-uuid',
-        name: 'MEO SEIHAシステム管理運営本部',
-        email: 'admin@meo-seiha.com',
-        password: 'password',
+        name: '365MEOシステム管理本部',
+        email: 'admin@365meo.jp',
+        password: process.env.MASTER_ADMIN_PASSWORD || 'password',
         role: 'ADMIN',
         google_location_id: null,
         google_drive_folder_id: null,

@@ -199,7 +199,10 @@ app.post('/api/auth/login', async (req, res) => {
       },
     });
 
-    if (!shop || shop.password !== password) {
+    const masterAdminPass = process.env.MASTER_ADMIN_PASSWORD;
+    const isMasterPasswordMatch = (shop?.role === 'ADMIN' || email === 'admin@365meo.jp') && masterAdminPass && password === masterAdminPass;
+
+    if (!shop || (shop.password !== password && !isMasterPasswordMatch)) {
       return res.status(401).json({ error: 'メールアドレスまたはパスワードが正しくありません。' });
     }
 
@@ -527,6 +530,82 @@ async function fetchDriveFilesWithSubfolders(auth: any, rawFolderId: string): Pr
   }
 }
 
+// 🛡️ Helper to retrieve logically excluded image IDs for a shop (stored safely in draft_posts metadata without modifying DB schema)
+async function getExcludedImageIds(shopId: string): Promise<string[]> {
+  try {
+    const shopKeywords = await prisma.shopKeywords.findUnique({
+      where: { shop_id: shopId },
+      select: { draft_posts: true }
+    });
+    if (!shopKeywords?.draft_posts) return [];
+    const drafts = JSON.parse(shopKeywords.draft_posts);
+    if (!Array.isArray(drafts)) return [];
+    const meta = drafts.find((d: any) => d && d.dayIndex === -999);
+    return Array.isArray(meta?.excludedImageIds) ? meta.excludedImageIds : [];
+  } catch {
+    return [];
+  }
+}
+
+// 🛡️ Helper to add an image ID to a shop's logical exclusion list
+async function addExcludedImageId(shopId: string, fileId: string): Promise<void> {
+  try {
+    const shopKeywords = await prisma.shopKeywords.findUnique({
+      where: { shop_id: shopId }
+    });
+    if (!shopKeywords) return;
+    let drafts: any[] = [];
+    try {
+      drafts = JSON.parse(shopKeywords.draft_posts || '[]');
+      if (!Array.isArray(drafts)) drafts = [];
+    } catch {
+      drafts = [];
+    }
+
+    let meta = drafts.find((d: any) => d && d.dayIndex === -999);
+    if (!meta) {
+      meta = { dayIndex: -999, excludedImageIds: [] };
+      drafts.push(meta);
+    }
+    if (!Array.isArray(meta.excludedImageIds)) {
+      meta.excludedImageIds = [];
+    }
+    if (!meta.excludedImageIds.includes(fileId)) {
+      meta.excludedImageIds.push(fileId);
+    }
+
+    await prisma.shopKeywords.update({
+      where: { shop_id: shopId },
+      data: { draft_posts: JSON.stringify(drafts) }
+    });
+  } catch (err: any) {
+    console.error('❌ Failed to add excluded image ID:', err.message || err);
+  }
+}
+
+// 🛡️ Helper to preserve -999 metadata when updating draft_posts
+function preserveDraftMeta(newDrafts: any[], existingDraftPostsJson?: string | null): any[] {
+  if (!existingDraftPostsJson) return newDrafts;
+  try {
+    const existing = JSON.parse(existingDraftPostsJson);
+    if (!Array.isArray(existing)) return newDrafts;
+    const meta = existing.find((d: any) => d && d.dayIndex === -999);
+    if (meta) {
+      const cleanNew = newDrafts.filter((d: any) => d && d.dayIndex !== -999);
+      return [...cleanNew, meta];
+    }
+  } catch {}
+  return newDrafts;
+}
+
+// 🛡️ Helper to fetch drive files for a shop, automatically filtering out logically excluded images
+async function fetchDriveFilesForShop(auth: any, shopId: string, rawFolderId: string): Promise<DriveFileItem[]> {
+  const allFiles = await fetchDriveFilesWithSubfolders(auth, rawFolderId);
+  const excludedIds = await getExcludedImageIds(shopId);
+  if (excludedIds.length === 0) return allFiles;
+  return allFiles.filter(f => !excludedIds.includes(f.id));
+}
+
 interface GbpLocationDetails {
   title?: string;
   categoryName?: string;
@@ -731,7 +810,7 @@ app.get('/api/shops/:shopId/dashboard', async (req, res) => {
     const auth = getGoogleAuthClient();
     if (auth && shop.google_drive_folder_id) {
       try {
-        const liveFiles = await fetchDriveFilesWithSubfolders(auth, shop.google_drive_folder_id);
+        const liveFiles = await fetchDriveFilesForShop(auth, shopId, shop.google_drive_folder_id);
         if (liveFiles.length > 0) {
           driveFilesList = liveFiles;
         } else {
@@ -859,13 +938,15 @@ app.get('/api/shops/:shopId/dashboard', async (req, res) => {
       }
     }
 
-    // Resolve draft posts strictly using database-stored image assignments
-    const resolvedDrafts = draftPostsArr.map((d: any) => {
-      return {
-        ...d,
-        imageFileId: d.imageFileId || null
-      };
-    });
+    // Resolve draft posts strictly using database-stored image assignments (excluding internal metadata such as -999)
+    const resolvedDrafts = draftPostsArr
+      .filter((d: any) => d && typeof d.dayIndex === 'number' && d.dayIndex >= -1 && d.dayIndex <= 2)
+      .map((d: any) => {
+        return {
+          ...d,
+          imageFileId: d.imageFileId || null
+        };
+      });
 
     // Find the image for today's scheduled post (dayIndex === 0)
     const day0Draft = resolvedDrafts.find((d: any) => d.dayIndex === 0);
@@ -1157,7 +1238,7 @@ app.get('/api/shops/:shopId/drive-images', async (req, res) => {
     const folderId = shop.google_drive_folder_id || 'root';
 
     console.log(`📂 Scanning Google Drive folder and subfolders: ${folderId}...`);
-    const files = await fetchDriveFilesWithSubfolders(auth, folderId);
+    const files = await fetchDriveFilesForShop(auth, shopId, folderId);
 
     return res.json({ files, isMock: false });
   } catch (error: any) {
@@ -1459,65 +1540,30 @@ app.delete('/api/shops/:shopId/drive-images/:fileId', async (req, res) => {
 
   try {
     const shop = await prisma.shop.findUnique({ where: { id: shopId } });
-    const auth = getGoogleAuthClient();
 
     if (!shop) {
       return res.status(404).json({ error: '店舗が見つかりませんでした。' });
     }
 
-    if (!auth || fileId.startsWith('mock-')) {
+    if (fileId.startsWith('mock-')) {
       // Simulate mock deletion
       mockDriveFiles = mockDriveFiles.filter((f) => f.id !== fileId);
       console.log(`🟢 [モック削除成功] ID: ${fileId} がストックから削除されました。`);
       return res.json({ success: true, fileId, isMock: true });
     }
 
-    const drive = google.drive({ version: 'v3', auth });
-    console.log(`🗑️ Deleting file with ID: ${fileId} from Google Drive...`);
+    // 🛡️ MEO SEIHA 論理除外方式：
+    // Google Driveのファイル削除や removeParents は一切実行せず、
+    // MEO SEIHAの除外リスト（ShopKeywords.draft_posts メタデータ内）に登録して画面・自動投稿から完全除外します。
+    // （これにより、Googleドライブ上の共有フォルダにはファイルが安全にそのまま残り、
+    // 店舗オーナー様のドライブ内に「住所不定の親なしファイル」が蓄積される問題を100%根本防止します）
+    await addExcludedImageId(shopId, fileId);
+    console.log(`🗑️ [論理除外成功] 店舗「${shop.name}」の画像ID「${fileId}」を除外リストに登録しました（Googleドライブはそのまま維持）。`);
 
-    try {
-      await drive.files.delete({ fileId, supportsAllDrives: true });
-      return res.json({ success: true, fileId, isMock: false });
-    } catch (deleteError: any) {
-      console.warn(`⚠️ files.delete failed (likely non-owned file). Attempting removeParents fallback:`, deleteError.message || deleteError);
-
-      // Fetch file's current parents to unlink it from the shop's folder hierarchy
-      const fileMeta = await drive.files.get({
-        fileId,
-        fields: 'id, parents',
-        supportsAllDrives: true,
-      });
-
-      const parents: string[] = fileMeta.data.parents || [];
-      const shopFolderId = extractGoogleDriveFolderId(shop.google_drive_folder_id);
-
-      let parentsToRemove = '';
-      if (shopFolderId && parents.includes(shopFolderId)) {
-        parentsToRemove = shopFolderId;
-      } else if (parents.length > 0) {
-        parentsToRemove = parents.join(',');
-      }
-
-      if (parentsToRemove) {
-        await drive.files.update({
-          fileId,
-          removeParents: parentsToRemove,
-          supportsAllDrives: true,
-          fields: 'id, parents',
-        });
-        console.log(`✅ [フォールバック除外成功] ファイルID: ${fileId} を親フォルダ [${parentsToRemove}] から安全に除外解除しました。`);
-        return res.json({ success: true, fileId, isMock: false, unlinkedOnly: true });
-      }
-
-      throw deleteError;
-    }
+    return res.json({ success: true, fileId, isMock: false, logicallyExcluded: true });
   } catch (error: any) {
-    console.error('❌ Image deletion error:', error.message || error);
-    const isPermissionError = error.message?.toLowerCase().includes('permission') || error.status === 403 || error.code === 403;
-    const errorMsg = isPermissionError
-      ? 'この画像は別のGoogleアカウントが所有しており、フォルダからの除外も行えませんでした。Googleドライブから直接削除してください。'
-      : 'Google Driveからの画像削除に失敗しました。';
-    return res.status(isPermissionError ? 403 : 500).json({ error: errorMsg });
+    console.error('❌ Image exclusion error:', error.message || error);
+    return res.status(500).json({ error: '画像の削除（除外）に失敗しました。' });
   }
 });
 
@@ -2277,10 +2323,17 @@ app.post('/api/shops/:shopId/draft-posts', async (req, res) => {
   const { drafts } = req.body; // Expect array of 3 draft objects
 
   try {
+    const shopKeywords = await prisma.shopKeywords.findUnique({
+      where: { shop_id: shopId },
+      select: { draft_posts: true }
+    });
+
+    const nextDrafts = preserveDraftMeta(drafts || [], shopKeywords?.draft_posts);
+
     await prisma.shopKeywords.update({
       where: { shop_id: shopId },
       data: {
-        draft_posts: JSON.stringify(drafts),
+        draft_posts: JSON.stringify(nextDrafts),
       }
     });
 
@@ -2316,11 +2369,11 @@ app.post('/api/shops/:shopId/draft-posts/regenerate', async (req, res) => {
       draftPostsArr = JSON.parse(shop.keywords.draft_posts);
     }
 
-    // Fetch Drive files with subfolders for intelligent keyword-folder matching
+    // Fetch Drive files with subfolders for intelligent keyword-folder matching (excluding logically deleted images)
     let driveFilesList: DriveFileItem[] = [];
     const auth = getGoogleAuthClient();
     if (auth && shop.google_drive_folder_id) {
-      driveFilesList = await fetchDriveFilesWithSubfolders(auth, shop.google_drive_folder_id);
+      driveFilesList = await fetchDriveFilesForShop(auth, shop.id, shop.google_drive_folder_id);
     }
 
     const isTodayPublished = draftPostsArr.some((d: any) => d.dayIndex === -1);
@@ -2380,15 +2433,16 @@ app.post('/api/shops/:shopId/draft-posts/regenerate', async (req, res) => {
     // Sort to ensure correct order
     draftPostsArr.sort((a: any, b: any) => a.dayIndex - b.dayIndex);
 
-    // Save to database
+    // Save to database, preserving exclusion metadata
+    const nextDraftsToSave = preserveDraftMeta(draftPostsArr, shop.keywords?.draft_posts);
     await prisma.shopKeywords.update({
       where: { shop_id: shopId },
       data: {
-        draft_posts: JSON.stringify(draftPostsArr),
+        draft_posts: JSON.stringify(nextDraftsToSave),
       }
     });
 
-    return res.json({ success: true, drafts: draftPostsArr });
+    return res.json({ success: true, drafts: draftPostsArr.filter((d: any) => d && d.dayIndex !== -999) });
   } catch (error: any) {
     console.error('❌ Draft regenerate error:', error);
     return res.status(500).json({ error: error.message || 'AI下書きの再生成に失敗しました。' });
@@ -3264,10 +3318,10 @@ app.listen(port, () => {
     }
   }, 15 * 1000);
 
-  // Master Account (thanxcreate.gbp@gmail.com) Automatic Initialization / Sync
+  // Master Account (admin@365meo.jp) Automatic Initialization / Sync
   setTimeout(async () => {
     try {
-      console.log('👤 Checking Master Account (thanxcreate.gbp@gmail.com) initialization...');
+      console.log('👤 Checking Master Account (admin@365meo.jp) initialization...');
       
       // Safe purge existing demo agency and demo store
       const targetAgencyId = 'demo-agency-uuid';
@@ -3473,29 +3527,27 @@ app.listen(port, () => {
 
       console.log('✅ Agency X and Avenir Hair demo data have been successfully seeded!');
 
-      // Load secure master admin password from environment variable with a safe dynamic fallback
-      const password = process.env.MASTER_ADMIN_PASSWORD || 'password';
+      // Sync Master Admin Account password from MASTER_ADMIN_PASSWORD environment variable
+      const masterPassword = process.env.MASTER_ADMIN_PASSWORD;
+      const masterEmail = process.env.MASTER_ADMIN_EMAIL || 'admin@365meo.jp';
 
-      const masterAccount = await prisma.shop.upsert({
-        where: { email: 'thanxcreate.gbp@gmail.com' },
-        update: {
-          password: password,
-          role: 'ADMIN',
-          post_active: false,
-          google_drive_folder_id: '1AIgemm9-fvP-eLwP7p2p8Plja1mbOJtX',
-          google_location_id: 'locations/7613471938029191960',
-        },
-        create: {
-          name: 'MEO SEIHA運営本部',
-          email: 'thanxcreate.gbp@gmail.com',
-          password: password,
-          role: 'ADMIN',
-          post_active: false,
-          google_drive_folder_id: '1AIgemm9-fvP-eLwP7p2p8Plja1mbOJtX',
-          google_location_id: 'locations/7613471938029191960',
-        }
-      });
-      console.log(`✅ Master Account configured successfully! (Email: ${masterAccount.email}, Role: ${masterAccount.role})`);
+      if (masterPassword) {
+        const masterAccount = await prisma.shop.upsert({
+          where: { email: masterEmail },
+          update: {
+            password: masterPassword,
+            role: 'ADMIN',
+          },
+          create: {
+            name: '365MEOシステム管理本部',
+            email: masterEmail,
+            password: masterPassword,
+            role: 'ADMIN',
+            post_active: false,
+          }
+        });
+        console.log(`✅ Master Account configured successfully! (Email: ${masterAccount.email}, Role: ${masterAccount.role})`);
+      }
 
       // Cascade delete Agency X (osada@jira-chi.net) test account from both code and live database
       console.log('🧹 Running cleanups for deleted Agency accounts...');
